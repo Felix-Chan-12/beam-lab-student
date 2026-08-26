@@ -184,6 +184,16 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .self-nav-actions { display: flex; gap: 8px; margin-left: auto; }
 .self-nav-actions button { padding: 9px 14px; }
 .self-nav-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.teacher-cockpit.vote-feedback-mode .teacher-overview { grid-template-rows: minmax(0, 1fr); }
+.teacher-cockpit.vote-feedback-mode .entry-compact { display: none; }
+.teacher-cockpit.vote-feedback-mode .teacher-pulse { height: 100%; }
+.student-feedback-summary { display: grid; grid-template-columns: minmax(150px, .35fr) minmax(280px, 1fr); gap: 22px; align-items: stretch; margin: 22px 0; }
+.student-feedback-total { display: grid; place-content: center; text-align: center; border-radius: 16px; background: var(--blue-soft); color: var(--blue); padding: 20px; }
+.student-feedback-total strong { font: 800 64px/1 Georgia, serif; }
+.student-feedback-total span { margin-top: 8px; color: var(--muted); font-weight: 700; }
+.student-vote-bars { display: grid; align-content: center; gap: 12px; margin: 0; }
+.student-feedback-comments { margin-top: 20px; }
+.student-feedback-comments p { margin: 9px 0; padding: 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .vote-status { margin: 10px 0 0; color: var(--blue); font-size: 13px; font-weight: 700; }
 .vote-status.closed { color: var(--orange-dark); }
 .stage-roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -361,6 +371,9 @@ th { color: var(--muted); font-size: 12px; }
   .self-step-control { align-items: flex-start; }
   .self-substeps { align-items: flex-start; flex-direction: column; gap: 6px; }
   .self-nav-actions { align-self: flex-end; }
+  .student-feedback-summary { grid-template-columns: 1fr; gap: 12px; }
+  .student-feedback-total { grid-template-columns: auto auto; gap: 10px; align-items: baseline; }
+  .student-feedback-total strong { font-size: 46px; }
   .teacher-workspace { grid-template-columns: 1fr; }
   .entry-compact { grid-template-columns: 1fr; }
   .preview-panel { position: static; }

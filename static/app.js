@@ -38,7 +38,17 @@ const forceStepHeadings = [
   "同一个 <i>F</i><sub><i>yB</i></sub>，能否还原切开前后的受力？",
   "改变 <i>F</i><sub><i>yB</i></sub>，两套体系的 <i>M</i> 图与 <i>F</i><sub><i>Q</i></sub> 图始终一致",
 ];
+const DEMO_VOTE_FEEDBACK = {
+  participants: 10,
+  counts: { agree: 5, doubt: 2, unsure: 3 },
+  comments: [
+    "方程少于未知量，从平衡上看确实可以有很多组解。",
+    "支座反力如果可以任意取值，构件内力也会跟着变化，感觉不太合理。",
+    "目前只能确认它们满足平衡，还需要更多证据才能判断。",
+  ],
+};
 let lastStage = -1;
+let lastVoteFeedback = null;
 let currentState = null;
 let config = null;
 let x1 = 0.25;
@@ -318,6 +328,7 @@ function createOfflineState() {
     vote_counts: { agree: 0, doubt: 0, unsure: 0 },
     vote_comments: [],
     offline_choice: "",
+    vote_feedback_visible: false,
   };
 }
 
@@ -349,6 +360,20 @@ function applyOfflineAction(state, action) {
     next.deformation_reveal_step = Math.max(0, Math.min(4, Number(action.step || 0)));
   } else if (action.type === "set_voting") {
     next.voting_open = Boolean(action.open);
+    if (action.open) {
+      next.vote_feedback_visible = false;
+      next.participants = 0;
+      next.progress.votes = 0;
+      next.vote_counts = { agree: 0, doubt: 0, unsure: 0 };
+      next.vote_comments = [];
+    }
+  } else if (action.type === "show_vote_feedback") {
+    next.voting_open = false;
+    next.vote_feedback_visible = true;
+    next.participants = DEMO_VOTE_FEEDBACK.participants;
+    next.progress.votes = DEMO_VOTE_FEEDBACK.participants;
+    next.vote_counts = structuredClone(DEMO_VOTE_FEEDBACK.counts);
+    next.vote_comments = [...DEMO_VOTE_FEEDBACK.comments];
   } else if (action.type === "toggle_comments") {
     next.comments_visible = Boolean(action.visible);
   } else if (action.type === "clear_comments") {
@@ -423,6 +448,10 @@ function renderWaiting() {
 }
 
 function renderVote() {
+  if (currentState.vote_feedback_visible) {
+    renderVoteFeedback();
+    return;
+  }
   app.innerHTML = studentShell("同一个结构，会有很多组正确解吗？", "E · 先行研判", `
     <p class="question">平衡方程有无穷多组解。请先判断：它们是否都是原结构的正确解？</p>
     <div class="ai-quote"><strong>小智：</strong>F<sub>yB</sub> 可以任意取值，而且每一个值都能得到一组满足平衡的反力。所以，超静定结构本来就有很多组正确解。</div>
@@ -473,12 +502,34 @@ function renderVote() {
     if (!selectedVote) return;
     try {
       await api({ type: "vote", choice: selectedVote, comment: voteComment.value });
-      showToast("判断已提交，可修改后再次提交");
+      await api({ type: "show_vote_feedback" });
+      renderStudent();
+      lastVoteFeedback = true;
+      showToast("判断已提交，正在查看全班反馈");
     } catch (error) {
       showToast(error.message || "内容未提交");
     }
   });
   updateVoteAvailability(currentState);
+}
+
+function voteFeedbackSummaryHtml(state) {
+  return `<div class="student-feedback-summary">
+    <div class="student-feedback-total"><strong>${state.participants}</strong><span>人完成判断</span></div>
+    <div class="vote-bars student-vote-bars">${voteBars(state.vote_counts)}</div>
+  </div>
+  <section class="student-feedback-comments"><h3>匿名补充观点</h3>
+    ${state.vote_comments.map(comment => `<p>${comment}</p>`).join("")}
+  </section>`;
+}
+
+function renderVoteFeedback() {
+  app.innerHTML = studentShell("全班判断已经汇总", "E · 投票反馈", `
+    <p class="question">面对小智的观点，大家形成了三种不同判断。</p>
+    ${voteFeedbackSummaryHtml(currentState)}
+    ${isSelfGuidedStudent ? '<div class="button-row"><button class="primary" id="continueFromFeedback">进入02 · 受力数验</button></div>' : ""}`,
+    `<h3>判断之后，还要验证</h3><p class="lead">投票呈现的是当前认识，并不直接公布正确答案。下一步，让内力图提供可以观察、可以比较的证据。</p>`);
+  document.querySelector("#continueFromFeedback")?.addEventListener("click", () => setSelfGuidedPosition(2, 1));
 }
 
 function updateVoteAvailability(state) {
@@ -1609,7 +1660,7 @@ function renderTeacher(state) {
     document.querySelectorAll(".roadmap-step[data-stage]").forEach(button => button.addEventListener("click", () => setTeacherStage(Number(button.dataset.stage))));
     document.querySelector("#previousStage").addEventListener("click", () => setTeacherStage(Math.max(0,currentState.stage-1)));
     document.querySelector("#nextStage").addEventListener("click", () => setTeacherStage(Math.min(3,currentState.stage+1)));
-    document.querySelector("#endVote").addEventListener("click", () => api({type:"set_voting",open:false}));
+    document.querySelector("#endVote").addEventListener("click", () => api({type:"show_vote_feedback"}));
     document.querySelector("#reopenVote").addEventListener("click", () => api({type:"set_voting",open:true}));
     document.querySelector("#forceRevealNext").addEventListener("click", () => {
       if (currentState.stage === 3) {
@@ -1670,6 +1721,7 @@ function renderTeacher(state) {
   document.querySelector("#alignmentCount").textContent = state.progress.alignments;
   document.querySelector("#teacherVoteBars").innerHTML = voteBars(state.vote_counts);
   renderVoteComments(state.vote_comments || [], state.comments_visible !== false);
+  document.querySelector("#teacherCockpit").classList.toggle("vote-feedback-mode", state.stage === 1 && state.vote_feedback_visible === true);
   document.querySelector("#toggleComments").textContent = state.comments_visible === false ? "开启展示" : "关闭展示";
   document.querySelectorAll(".roadmap-step[data-stage]").forEach(button => button.classList.toggle("current", Number(button.dataset.stage) === state.stage));
   document.querySelector("#previousStage").disabled = state.stage === 0;
@@ -1813,10 +1865,12 @@ async function tick() {
     }
     if (role === "teacher") renderTeacher(state);
     else if (state.stage !== lastStage) renderStudent();
+    else if (state.stage === 1 && Boolean(state.vote_feedback_visible) !== lastVoteFeedback) renderStudent();
     else if (state.stage === 1) updateVoteAvailability(state);
     else if (state.stage === 2) updateForceReveal(state);
     else if (state.stage === 3) updateDeformationReveal(state);
     lastStage = state.stage;
+    lastVoteFeedback = Boolean(state.vote_feedback_visible);
   } catch (error) {
     sessionPill.textContent = "正在重连";
   }
