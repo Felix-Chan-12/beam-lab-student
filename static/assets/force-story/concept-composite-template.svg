@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 900">
+  <defs>
+    <g id="load">
+      <path d="M65 130h155M85 82v38m38-38v38m38-38v38m38-38v38" fill="none" stroke="#f04418" stroke-width="8"/>
+      <path d="m76 108 9 16 9-16m20 0 9 16 9-16m20 0 9 16 9-16m20 0 9 16 9-16" fill="#f04418"/>
+      <path d="M65 130h155" stroke="#111" stroke-width="12"/>
+    </g>
+  </defs>
+  <g transform="translate(0 0)">
+    <circle cx="150" cy="150" r="118" fill="none" stroke="#b8b8b8" stroke-width="3"/>
+    <use href="#load"/>
+    <circle cx="220" cy="130" r="15" fill="#fff" stroke="#111" stroke-width="8"/>
+    <path d="M220 145v38" stroke="#111" stroke-width="8"/><circle cx="220" cy="198" r="13" fill="#fff" stroke="#111" stroke-width="8"/>
+    <path d="M188 218h64m-48 0-13 17m34-17-13 17m34-17-13 17" stroke="#111" stroke-width="7"/>
+  </g>
+  <g transform="translate(0 300)">
+    <circle cx="150" cy="150" r="118" fill="none" stroke="#b8b8b8" stroke-width="3"/>
+    <use href="#load"/>
+    <circle cx="220" cy="130" r="15" fill="#fff" stroke="#111" stroke-width="8"/>
+    <path d="M220 145c-28 13 28 27 0 40s28 27 0 40" fill="none" stroke="#111" stroke-width="8"/>
+  </g>
+  <g transform="translate(0 600)">
+    <circle cx="150" cy="150" r="118" fill="none" stroke="#b8b8b8" stroke-width="3"/>
+    <use href="#load"/>
+    <circle cx="220" cy="130" r="15" fill="#fff" stroke="#111" stroke-width="8"/>
+    <path d="M220 232v-72m-12 20 12-21 12 21" fill="none" stroke="#f04418" stroke-width="8"/>
+    <text x="235" y="215" font-family="Cambria, serif" font-size="30" font-style="italic">F<tspan dy="8" font-size="18">yB</tspan></text>
+  </g>
+</svg>
