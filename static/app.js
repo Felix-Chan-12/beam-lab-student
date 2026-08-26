@@ -500,6 +500,10 @@ function renderVote() {
   }));
   submitVote.addEventListener("click", async () => {
     if (!selectedVote) return;
+    if (isPreview) {
+      showToast("教师预览：本次判断不计入统计");
+      return;
+    }
     try {
       await api({ type: "vote", choice: selectedVote, comment: voteComment.value });
       await api({ type: "show_vote_feedback" });
