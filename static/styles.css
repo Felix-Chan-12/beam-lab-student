@@ -172,6 +172,18 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .force-reveal-grid { display: grid; grid-template-columns: repeat(5, 32px); gap: 5px; align-items: center; }
 .force-reveal-grid button { width: 32px; height: 32px; padding: 0; border: 1px solid #a9d9c2; border-radius: 7px; background: #eef8f3; color: #4f7563; font: 800 13px/1 Georgia, serif; }
 .force-reveal-grid button.active { border-color: #25a66a; background: #25a66a; color: white; box-shadow: 0 4px 10px rgba(37,166,106,.18); }
+.self-guided-nav { display: grid; gap: 12px; margin-bottom: 14px; padding: 14px 18px; }
+.self-guided-page main > .steps { display: none; }
+.self-stage-roadmap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.self-stage-button { border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--muted); padding: 8px 10px; font-size: 12px; }
+.self-stage-button span { display: inline-block; margin-right: 8px; font: 800 15px/1 Georgia, serif; }
+.self-stage-button.current { color: var(--ink); border-color: var(--orange); background: #fff3eb; box-shadow: 0 5px 14px rgba(215,99,34,.1); }
+.self-step-control { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.self-substeps { display: flex; align-items: center; gap: 10px; }
+.self-substeps-label, .self-guide-hint { margin: 0; color: var(--muted); font-size: 12px; font-weight: 700; }
+.self-nav-actions { display: flex; gap: 8px; margin-left: auto; }
+.self-nav-actions button { padding: 9px 14px; }
+.self-nav-actions button:disabled { opacity: .4; cursor: not-allowed; }
 .vote-status { margin: 10px 0 0; color: var(--blue); font-size: 13px; font-weight: 700; }
 .vote-status.closed { color: var(--orange-dark); }
 .stage-roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -343,6 +355,12 @@ th { color: var(--muted); font-size: 12px; }
   .teacher-command-bar, .pulse-heading, .preview-heading { align-items: stretch; flex-direction: column; }
   .stage-nav { justify-content: flex-start; }
   .stage-roadmap { grid-template-columns: repeat(3, 1fr); }
+  .self-guided-nav { padding: 10px; }
+  .self-stage-button { padding: 8px 4px; }
+  .self-stage-button span { display: block; margin: 0 0 4px; }
+  .self-step-control { align-items: flex-start; }
+  .self-substeps { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .self-nav-actions { align-self: flex-end; }
   .teacher-workspace { grid-template-columns: 1fr; }
   .entry-compact { grid-template-columns: 1fr; }
   .preview-panel { position: static; }

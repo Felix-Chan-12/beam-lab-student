@@ -8,6 +8,7 @@ const searchParams = new URLSearchParams(location.search);
 const teacherToken = searchParams.get("token") || "";
 const studentKey = searchParams.get("key") || "";
 const isPreview = role === "student" && searchParams.get("preview") === "1";
+const isSelfGuidedStudent = offlineMode && role === "student" && !isPreview && offlineRuntime.selfGuided === true;
 const layoutTeacherToken = searchParams.get("teacher_token") || "";
 const layoutMode = isPreview && (
   searchParams.get("layout") === "1"
@@ -19,6 +20,7 @@ const layoutToolsEnabled = role === "teacher" && searchParams.get("edit") === "1
 document.body.classList.add(`${role}-page`);
 if (isPreview) document.body.classList.add("preview-page");
 if (layoutMode) document.body.classList.add("layout-mode");
+if (isSelfGuidedStudent) document.body.classList.add("self-guided-page");
 const app = document.querySelector("#app");
 const brandLink = document.querySelector("#brandLink");
 const sessionPill = document.querySelector("#sessionPill");
@@ -1706,6 +1708,86 @@ function renderTeacher(state) {
 
 function renderStudent() {
   [renderWaiting, renderVote, renderForce, renderDeformation][Math.min(currentState.stage, 3)]();
+  mountSelfGuidedNavigation();
+}
+
+function selfGuidedStep(stage = currentState.stage) {
+  if (stage === 2) return Math.max(1, Math.min(5, Number(currentState.force_reveal_step || 1)));
+  if (stage === 3) return Math.max(1, Math.min(4, Number(currentState.deformation_reveal_step || 1)));
+  return 0;
+}
+
+function selfGuidedNavigationHtml() {
+  const stage = Number(currentState.stage || 1);
+  const step = selfGuidedStep(stage);
+  const substepMax = stage === 2 ? 5 : stage === 3 ? 4 : 0;
+  const stageButtons = [1, 2, 3].map(number => `
+    <button type="button" class="self-stage-button${number === stage ? " current" : ""}" data-self-stage="${number}">
+      <span>0${number}</span>${stageLabels[number]}
+    </button>`).join("");
+  const substeps = substepMax ? `<div class="self-substeps" aria-label="0${stage}阶段步骤">
+    <span class="self-substeps-label">0${stage}步骤</span>
+    <div class="force-reveal-grid">${Array.from({ length: substepMax }, (_, index) => {
+      const number = index + 1;
+      return `<button type="button" class="${number <= step ? "active" : ""}" data-self-step="${number}" aria-label="进入0${stage}第${number}步" aria-pressed="${number === step}">${number}</button>`;
+    }).join("")}</div>
+  </div>` : `<p class="self-guide-hint">提交判断后，可进入02逐步观察。</p>`;
+  const atStart = stage === 1;
+  const atEnd = stage === 3 && step === 4;
+  return `<nav class="self-guided-nav panel" aria-label="学生自主探究导航">
+    <div class="self-stage-roadmap">${stageButtons}</div>
+    <div class="self-step-control">${substeps}<div class="self-nav-actions">
+      <button type="button" class="secondary" data-self-nav="previous" ${atStart ? "disabled" : ""}>上一步</button>
+      <button type="button" class="primary" data-self-nav="next" ${atEnd ? "disabled" : ""}>${atEnd ? "探究完成" : "下一步"}</button>
+    </div></div>
+  </nav>`;
+}
+
+async function setSelfGuidedPosition(targetStage, targetStep = 1) {
+  const stage = Math.max(1, Math.min(3, Number(targetStage || 1)));
+  const stageChanged = stage !== currentState.stage;
+  if (stageChanged) await api({ type: "set_stage", stage });
+  if (stage === 2) await api({ type: "set_force_reveal", step: Math.max(1, Math.min(5, Number(targetStep || 1))) });
+  if (stage === 3) await api({ type: "set_deformation_reveal", step: Math.max(1, Math.min(4, Number(targetStep || 1))) });
+  document.body.dataset.stage = String(currentState.stage);
+  if (stageChanged) {
+    renderStudent();
+    lastStage = currentState.stage;
+  } else {
+    if (stage === 2) updateForceReveal(currentState);
+    if (stage === 3) updateDeformationReveal(currentState);
+    mountSelfGuidedNavigation();
+  }
+}
+
+function mountSelfGuidedNavigation() {
+  if (!isSelfGuidedStudent) return;
+  document.querySelector(".self-guided-nav")?.remove();
+  app.insertAdjacentHTML("afterbegin", selfGuidedNavigationHtml());
+  document.querySelectorAll("[data-self-stage]").forEach(button => button.addEventListener("click", () => {
+    const stage = Number(button.dataset.selfStage);
+    const step = stage === currentState.stage ? selfGuidedStep(stage) : 1;
+    setSelfGuidedPosition(stage, step);
+  }));
+  document.querySelectorAll("[data-self-step]").forEach(button => button.addEventListener("click", () => {
+    setSelfGuidedPosition(currentState.stage, Number(button.dataset.selfStep));
+  }));
+  document.querySelector('[data-self-nav="previous"]')?.addEventListener("click", () => {
+    const stage = currentState.stage;
+    const step = selfGuidedStep(stage);
+    if (stage === 3 && step > 1) return setSelfGuidedPosition(3, step - 1);
+    if (stage === 3) return setSelfGuidedPosition(2, 5);
+    if (stage === 2 && step > 1) return setSelfGuidedPosition(2, step - 1);
+    if (stage === 2) return setSelfGuidedPosition(1, 0);
+  });
+  document.querySelector('[data-self-nav="next"]')?.addEventListener("click", () => {
+    const stage = currentState.stage;
+    const step = selfGuidedStep(stage);
+    if (stage === 1) return setSelfGuidedPosition(2, 1);
+    if (stage === 2 && step < 5) return setSelfGuidedPosition(2, step + 1);
+    if (stage === 2) return setSelfGuidedPosition(3, 1);
+    if (stage === 3 && step < 4) return setSelfGuidedPosition(3, step + 1);
+  });
 }
 
 async function tick() {
