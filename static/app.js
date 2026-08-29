@@ -12,7 +12,7 @@ const isSelfGuidedStudent = offlineMode && role === "student" && !isPreview && o
 const layoutTeacherToken = searchParams.get("teacher_token") || "";
 const layoutMode = isPreview && (
   searchParams.get("layout") === "1"
-  || (searchParams.get("edit") === "1" && Boolean(layoutTeacherToken))
+  || (searchParams.get("edit") === "1" && (offlineMode || Boolean(layoutTeacherToken)))
 );
 const layoutStage = Number(searchParams.get("layout_stage") || 2);
 const layoutStep = Number(searchParams.get("layout_step") || 0);
@@ -135,6 +135,14 @@ function normalizeDeformationLayout(layout) {
     stepConfig.styles = stepConfig.styles || {};
     stepConfig.styles.deformationLineStyle ||= "dashed";
   });
+  const step4Numeric = layout.steps["4"]?.numeric;
+  if (step4Numeric) {
+    step4Numeric.topDeformationX0 ??= step4Numeric.deformationX0;
+    step4Numeric.topDeformationXB ??= step4Numeric.deformationXB;
+    step4Numeric.topDeformationBaseline ??= step4Numeric.deformationBaseline;
+    step4Numeric.topDeformationScale ??= step4Numeric.deformationScale;
+    step4Numeric.topDeformationLineWidth ??= step4Numeric.deformationLineWidth;
+  }
   return layout;
 }
 
@@ -695,6 +703,11 @@ function bindDeformationStoryboard() {
       label.dataset.forceMode = current.mode;
     });
     drawDecompositionStructure(document.querySelector("[data-deformation-load]"), mode, deformationBasicX1);
+    const topDeformationCanvas = document.querySelector("[data-deformation-load-top]");
+    if (topDeformationCanvas) {
+      topDeformationCanvas.hidden = step !== 4;
+      if (step === 4) drawDecompositionStructure(topDeformationCanvas, "combined", THEORETICAL_FYB_RATIO);
+    }
     updateDeformationFormulaValue(step, deformationBasicX1);
     if (step >= 1 && deformationStepConfig(step)) applyDeformationStepLayout(step);
     else applyForceLabelLayout(labelContext);
@@ -852,9 +865,11 @@ function updateDeformationReveal(state) {
   });
   const basicImage = story.querySelector('[data-element-slot="basicStructure"] > img');
   const decompositionCanvas = story.querySelector("[data-deformation-load]");
+  const topDeformationCanvas = story.querySelector("[data-deformation-load-top]");
   const rowDivider = story.querySelector("[data-deformation-divider]");
   if (basicImage) basicImage.hidden = step >= 2 && !deformationStepConfig(step);
   if (decompositionCanvas) decompositionCanvas.hidden = step < 2;
+  if (topDeformationCanvas) topDeformationCanvas.hidden = step !== 4;
   if (rowDivider) rowDivider.hidden = step < 1;
 
   applyForceLayout();
@@ -899,7 +914,10 @@ function renderDeformation() {
   </section>`;
   const basicStructure = document.querySelector('[data-element-slot="basicStructure"]');
   const canvasHeight = Math.round(1000 / FORCE_ELEMENT_META.basicStructure.ratio);
-  basicStructure.insertAdjacentHTML("afterbegin", `<canvas data-deformation-load width="1000" height="${canvasHeight}" hidden></canvas>`);
+  basicStructure.insertAdjacentHTML("afterbegin", `<canvas class="deformation-load-canvas" data-deformation-load data-deformation-system="bottom" width="1000" height="${canvasHeight}" hidden></canvas>`);
+  const originalStructure = document.querySelector('[data-element-slot="originalStructure"]');
+  const topCanvasHeight = Math.round(1000 / FORCE_ELEMENT_META.originalStructure.ratio);
+  originalStructure.insertAdjacentHTML("afterbegin", `<canvas class="deformation-load-canvas" data-deformation-load-top data-deformation-system="top" width="1000" height="${topCanvasHeight}" hidden></canvas>`);
   document.querySelector(".force-free-canvas").insertAdjacentHTML("beforeend", '<div class="deformation-formula-label" data-deformation-formula hidden></div>');
   bindDeformationStoryboard();
   updateDeformationReveal(currentState);
@@ -1060,7 +1078,16 @@ function drawDecompositionStructure(canvas, mode, r) {
   const customConfig = deformationStepConfig(customStep);
   if (customConfig) {
     const numeric = customConfig.numeric;
-    const color = customConfig.styles.bottomColor;
+    const isTopCurve = canvas.dataset.deformationSystem === "top";
+    const responseRatio = isTopCurve ? THEORETICAL_FYB_RATIO : r;
+    const curveX0 = isTopCurve ? numeric.topDeformationX0 : numeric.deformationX0;
+    const curveXB = isTopCurve ? numeric.topDeformationXB : numeric.deformationXB;
+    const curveBaseline = isTopCurve ? numeric.topDeformationBaseline : numeric.deformationBaseline;
+    const curveScale = isTopCurve ? numeric.topDeformationScale : numeric.deformationScale;
+    const curveLineWidth = isTopCurve ? numeric.topDeformationLineWidth : numeric.deformationLineWidth;
+    const color = isTopCurve
+      ? customConfig.styles.topColor
+      : customConfig.styles.bottomColor;
     const baseCanvasHeight = Number(canvas.dataset.baseCanvasHeight || canvas.height);
     canvas.dataset.baseCanvasHeight = String(baseCanvasHeight);
     const points = [];
@@ -1069,19 +1096,19 @@ function drawDecompositionStructure(canvas, mode, r) {
       const uniformShape = s * s * (6 - 4 * s + s * s) / 3;
       const fybShape = s * s * (3 - s) / 2;
       const amplitude = mode === "uniform"
-        ? numeric.deformationScale * uniformShape
+        ? curveScale * uniformShape
         : mode === "fyb"
-          ? -numeric.deformationScale * r / THEORETICAL_FYB_RATIO * fybShape
-          : numeric.deformationScale * (uniformShape - r / THEORETICAL_FYB_RATIO * fybShape);
+          ? -curveScale * responseRatio / THEORETICAL_FYB_RATIO * fybShape
+          : curveScale * (uniformShape - responseRatio / THEORETICAL_FYB_RATIO * fybShape);
       points.push({
-        x: numeric.deformationX0 + (numeric.deformationXB - numeric.deformationX0) * s,
-        y: numeric.deformationBaseline + amplitude,
+        x: curveX0 + (curveXB - curveX0) * s,
+        y: curveBaseline + amplitude,
       });
     }
     const minimumY = Math.min(...points.map((point) => point.y));
     const maximumY = Math.max(...points.map((point) => point.y));
-    const topPadding = Math.max(0, Math.ceil(-minimumY + numeric.deformationLineWidth + 12));
-    const bottomPadding = Math.max(0, Math.ceil(maximumY + numeric.deformationLineWidth + 12 - baseCanvasHeight));
+    const topPadding = Math.max(0, Math.ceil(-minimumY + curveLineWidth + 12));
+    const bottomPadding = Math.max(0, Math.ceil(maximumY + curveLineWidth + 12 - baseCanvasHeight));
     const requiredCanvasHeight = baseCanvasHeight + topPadding + bottomPadding;
     if (canvas.width !== 1000 || canvas.height !== requiredCanvasHeight) {
       canvas.width = 1000;
@@ -1093,7 +1120,7 @@ function drawDecompositionStructure(canvas, mode, r) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = color;
     ctx.lineCap = "round";
-    ctx.lineWidth = numeric.deformationLineWidth;
+    ctx.lineWidth = curveLineWidth;
     ctx.setLineDash(curveDash(customConfig.styles.deformationLineStyle));
     ctx.beginPath();
     points.forEach((point, index) => {
@@ -1365,12 +1392,22 @@ const DEFORMATION_EDITOR_NUMERIC = [
   ["上排弯矩图基线", "topMomentBaseline", 0, 500, 1],
   ["下排弯矩图基线", "bottomMomentBaseline", 0, 500, 1],
   ["弯矩图线宽", "momentLineWidth", 1, 16, .5],
-  ["变形曲线 A 端位置", "deformationX0", 0, 400, 1],
-  ["变形曲线 B 端位置", "deformationXB", 600, 1000, 1],
-  ["变形曲线基线", "deformationBaseline", 0, 500, 1],
-  ["变形曲线纵向比例", "deformationScale", 10, 300, 1],
-  ["变形曲线线宽", "deformationLineWidth", 1, 16, .5],
+  ["下排变形曲线 A 端位置", "deformationX0", 0, 400, 1],
+  ["下排变形曲线 B 端位置", "deformationXB", 600, 1000, 1],
+  ["下排变形曲线基线", "deformationBaseline", 0, 500, 1],
+  ["下排变形曲线纵向比例", "deformationScale", 10, 300, 1],
+  ["下排变形曲线线宽", "deformationLineWidth", 1, 16, .5],
 ];
+
+const TOP_DEFORMATION_EDITOR_NUMERIC = [
+  ["上排曲线 A 端位置", "topDeformationX0", 0, 400, 1],
+  ["上排曲线 B 端位置", "topDeformationXB", 600, 1000, 1],
+  ["上排曲线基线", "topDeformationBaseline", 0, 500, 1],
+  ["上排曲线纵向比例", "topDeformationScale", 10, 3000, 1],
+  ["上排曲线线宽", "topDeformationLineWidth", 1, 16, .5],
+];
+
+const OFFLINE_DEFORMATION_LAYOUT_KEY = "beam-offline-deformation-layout-v1";
 
 function deformationAxisHtml(group, slot, key, label, value, min, max, step) {
   return `<label class="layout-control element-axis"><span>${label}<output data-d-output="${group}.${slot}.${key}"></output></span><input data-d-group="${group}" data-d-slot="${slot}" data-d-key="${key}" type="range" min="${min}" max="${max}" step="${step}" value="${value}"/><input class="layout-number" data-d-group="${group}" data-d-slot="${slot}" data-d-key="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${value}"/></label>`;
@@ -1418,6 +1455,12 @@ function syncDeformationLayoutEditor(editor, stepConfig) {
 }
 
 async function saveDeformationLayout() {
+  if (offlineMode) {
+    localStorage.setItem(OFFLINE_DEFORMATION_LAYOUT_KEY, JSON.stringify(deformationLayout));
+    updateDeformationReveal(currentState);
+    showToast("03版面配置已保存到本机浏览器");
+    return;
+  }
   const response = await fetch("/api/deformation-layout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1470,8 +1513,11 @@ function createDeformationLayoutEditor(step) {
     const effectiveMax = step === 4 && key === "deformationScale" ? 3000 : max;
     return `<label class="layout-control"><span>${label}<output data-d-numeric-output="${key}"></output></span><input data-d-numeric="${key}" type="range" min="${min}" max="${effectiveMax}" step="${increment}" value="${stepConfig.numeric[key]}"/><input class="layout-number" data-d-numeric="${key}" type="number" min="${min}" max="${effectiveMax}" step="${increment}" value="${stepConfig.numeric[key]}"/></label>`;
   }).join("");
+  const topDeformationHtml = step === 4
+    ? `<section><h3>上排固定真解曲线（<i>F</i><sub><i>yB</i></sub> = 3/8<i>ql</i>）</h3><p class="hint">该曲线不响应滑块，仅调整显示位置与大小。</p>${TOP_DEFORMATION_EDITOR_NUMERIC.map(([label, key, min, max, increment]) => `<label class="layout-control"><span>${label}<output data-d-numeric-output="${key}"></output></span><input data-d-numeric="${key}" type="range" min="${min}" max="${max}" step="${increment}" value="${stepConfig.numeric[key]}"/><input class="layout-number" data-d-numeric="${key}" type="number" min="${min}" max="${max}" step="${increment}" value="${stepConfig.numeric[key]}"/></label>`).join("")}</section>`
+    : "";
   const formulaHtml = step >= 2 ? `<section><h3>变形公式：X、Y、Scale、颜色</h3>${[["X", "x", 0, 1200, 1], ["Y", "y", 0, 1000, 1], ["Scale", "scale", .2, 3, .01]].map(([label, key, min, max, increment]) => `<label class="layout-control"><span>${label}<output data-d-formula-output="${key}"></output></span><input data-d-formula="${key}" type="range" min="${min}" max="${max}" step="${increment}" value="${stepConfig.formula[key]}"/><input class="layout-number" data-d-formula="${key}" type="number" min="${min}" max="${max}" step="${increment}" value="${stepConfig.formula[key]}"/></label>`).join("")}<div class="style-grid"><label>公式颜色<input type="color" data-d-formula-color value="${stepConfig.formula.color}"/></label></div></section>` : "";
-  editor.innerHTML = `<header><div><strong>03-${step} 版面调试</strong><small>四图独立配置，拖动即预览</small></div><div class="layout-editor-header-actions"><button class="secondary compact-button" id="closeLayoutEditor">关闭</button><button class="secondary compact-button" id="collapseLayoutEditor">收起</button></div></header><div class="layout-editor-body"><section><h3>四个图片：X、Y、Scale</h3>${Object.entries(DEFORMATION_EDITOR_ELEMENTS).map(([slot, label]) => deformationElementEditorHtml(stepConfig, slot, label)).join("")}</section><section><h3>弯矩图与变形曲线</h3>${numericHtml}<div class="style-grid"><label>弯矩方向<select data-d-style="momentDirection"><option value="1">当前方向</option><option value="-1">反向</option></select></label><label>上排颜色<input type="color" data-d-style="topColor"/></label><label>下排颜色<input type="color" data-d-style="bottomColor"/></label><label>弯矩图线型<select data-d-style="momentLineStyle"><option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option></select></label><label>变形曲线线型<select data-d-style="deformationLineStyle"><option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option></select></label><label>填充透明度<input data-d-style="fillOpacity" type="number" min="0" max="0.8" step="0.01"/></label></div></section>${formulaHtml}<section><h3>动态标注：X、Y、Scale</h3>${Object.entries(DEFORMATION_EDITOR_LABELS).map(([slot, label]) => deformationLabelEditorHtml(stepConfig, slot, label)).join("")}</section><section><h3>替换四张图片</h3>${Object.entries(DEFORMATION_EDITOR_ELEMENTS).map(([slot, label]) => `<label class="asset-upload"><span>${label}</span><input type="file" accept=".svg,.png,image/svg+xml,image/png" data-d-upload="${slot}"/></label>`).join("")}</section><div class="layout-editor-actions"><button class="primary" id="saveLayoutEditor">保存03-${step}版面</button><button class="secondary" id="backupLayoutEditor">备份配置文件</button></div></div>`;
+  editor.innerHTML = `<header><div><strong>03-${step} 版面调试</strong><small>四图独立配置，拖动即预览</small></div><div class="layout-editor-header-actions"><button class="secondary compact-button" id="closeLayoutEditor">关闭</button><button class="secondary compact-button" id="collapseLayoutEditor">收起</button></div></header><div class="layout-editor-body"><section><h3>四个图片：X、Y、Scale</h3>${Object.entries(DEFORMATION_EDITOR_ELEMENTS).map(([slot, label]) => deformationElementEditorHtml(stepConfig, slot, label)).join("")}</section><section><h3>弯矩图与下排变形曲线</h3>${numericHtml}<div class="style-grid"><label>弯矩方向<select data-d-style="momentDirection"><option value="1">当前方向</option><option value="-1">反向</option></select></label><label>上排颜色<input type="color" data-d-style="topColor"/></label><label>下排颜色<input type="color" data-d-style="bottomColor"/></label><label>弯矩图线型<select data-d-style="momentLineStyle"><option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option></select></label><label>变形曲线线型<select data-d-style="deformationLineStyle"><option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option></select></label><label>填充透明度<input data-d-style="fillOpacity" type="number" min="0" max="0.8" step="0.01"/></label></div></section>${topDeformationHtml}${formulaHtml}<section><h3>动态标注：X、Y、Scale</h3>${Object.entries(DEFORMATION_EDITOR_LABELS).map(([slot, label]) => deformationLabelEditorHtml(stepConfig, slot, label)).join("")}</section><section><h3>替换四张图片</h3>${Object.entries(DEFORMATION_EDITOR_ELEMENTS).map(([slot, label]) => `<label class="asset-upload"><span>${label}</span><input type="file" accept=".svg,.png,image/svg+xml,image/png" data-d-upload="${slot}"/></label>`).join("")}</section><div class="layout-editor-actions"><button class="primary" id="saveLayoutEditor">保存03-${step}版面</button><button class="secondary" id="backupLayoutEditor">备份配置文件</button></div></div>`;
   document.body.appendChild(editor);
   editor.querySelectorAll("[data-d-group]").forEach((input) => input.addEventListener("input", () => {
     stepConfig[input.dataset.dGroup][input.dataset.dSlot][input.dataset.dKey] = Number(input.value);
@@ -1695,7 +1741,7 @@ function renderTeacher(state) {
     document.querySelector("#resetButton").addEventListener("click", async () => { await api({type:"reset"}); showToast("试讲数据已重置"); });
     document.querySelector("#copyUrl").addEventListener("click", async () => { await navigator.clipboard.writeText(config.student_url); showToast("学生网址已复制"); });
     document.querySelector("#openLayoutEditor")?.addEventListener("click", () => {
-      const editorUrl = new URL(config.layout_url, location.origin);
+      const editorUrl = new URL(config.layout_url, location.href);
       editorUrl.searchParams.set("edit", "1");
       if (currentState.stage === 3) {
         const step = Number(currentState.deformation_reveal_step || 0);
@@ -1889,8 +1935,13 @@ async function start() {
       layout_url: offlineRuntime.previewUrl || "./teacher.html?preview=1",
     };
     forceLayout = structuredClone(window.BEAM_OFFLINE_FORCE_LAYOUT || DEFAULT_FORCE_LAYOUT);
-    deformationLayout = normalizeDeformationLayout(structuredClone(window.BEAM_OFFLINE_DEFORMATION_LAYOUT || null));
+    let savedDeformationLayout = null;
+    try {
+      savedDeformationLayout = JSON.parse(localStorage.getItem(OFFLINE_DEFORMATION_LAYOUT_KEY) || "null");
+    } catch {}
+    deformationLayout = normalizeDeformationLayout(structuredClone(savedDeformationLayout || window.BEAM_OFFLINE_DEFORMATION_LAYOUT || null));
     applyForceLayout();
+    createLayoutEditor();
     await tick();
     setInterval(tick, role === "teacher" ? 600 : 1000);
     return;
