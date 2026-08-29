@@ -402,7 +402,12 @@ window.BEAM_OFFLINE_DEFORMATION_LAYOUT = {
         "deformationXB": 977.0,
         "deformationBaseline": 230.0,
         "deformationScale": 1250.0,
-        "deformationLineWidth": 8.0
+        "deformationLineWidth": 8.0,
+        "topDeformationX0": 300.0,
+        "topDeformationXB": 934.0,
+        "topDeformationBaseline": 134.0,
+        "topDeformationScale": 927.0,
+        "topDeformationLineWidth": 5.5
       },
       "labels": {
         "topMA": {
