@@ -31,12 +31,10 @@ brandLink.href = location.href;
 
 const stageLabels = ["等待", "先行研判 E", "受力数验 A₁", "协调释理 A₂"];
 const forceStepHeadings = [
-  "拖动 <i>F</i><sub><i>yB</i></sub>，平衡残差会改变吗？",
-  "原结构的竖向链杆，限制了 <i>B</i> 点什么？",
-  "像第三章内力分析一样，把竖向链杆切开",
-  "用 <i>F</i><sub><i>yB</i></sub> 代替被切开的竖向链杆",
-  "同一个 <i>F</i><sub><i>yB</i></sub>，能否还原切开前后的受力？",
-  "改变 <i>F</i><sub><i>yB</i></sub>，两套体系的 <i>M</i> 图与 <i>F</i><sub><i>Q</i></sub> 图始终一致",
+  "先看原结构的受力",
+  "切开竖向链杆，用力代替它的作用",
+  "写出静定结构的平衡方程",
+  "同一个 <i>F</i><sub>yB</sub>，比较切开前后的内力图",
 ];
 const DEMO_VOTE_FEEDBACK = {
   participants: 10,
@@ -63,6 +61,9 @@ let previewTimerRunning = false;
 const FORCE_CANVAS = { width: 1200, height: 1000 };
 
 function runtimeUrl(value) {
+  if (typeof value === "string" && /\/force-story\/scene\/(2|7)\.png$/.test(value)) {
+    value += "?v=sign-20260912";
+  }
   if (!offlineMode || typeof value !== "string" || !value.startsWith("/")) return value;
   return `${offlineRuntime.assetBase || "."}${value}`;
 }
@@ -70,14 +71,14 @@ const FORCE_ELEMENT_META = {
   originalEquation: { number: "01", label: "上部平衡方程", baseWidth: 380, ratio: 3285 / 1460, reveal: 0 },
   originalStructure: { number: "02", label: "原结构", baseWidth: 480, ratio: 4306 / 1925, reveal: 0 },
   conceptOriginal: { number: "03", label: "圆一：原约束", baseWidth: 275, ratio: 2548 / 2534, reveal: 1 },
-  conceptReleased: { number: "04", label: "圆二：解除约束", baseWidth: 275, ratio: 1, reveal: 2 },
-  conceptRedundant: { number: "05", label: "圆三：力代约束", baseWidth: 275, ratio: 1, reveal: 3 },
-  basicEquation: { number: "06", label: "下部平衡方程", baseWidth: 380, ratio: 3285 / 1460, reveal: 4 },
-  basicStructure: { number: "07", label: "基本体系", baseWidth: 480, ratio: 4101 / 1912, reveal: 4 },
-  originalMomentBg: { number: "08", label: "原结构M图", baseWidth: 350, ratio: 3221 / 1227, reveal: 0, curve: "moment", system: "original" },
-  originalShearBg: { number: "09", label: "原结构FQ图", baseWidth: 350, ratio: 3211 / 1227, reveal: 0, curve: "shear", system: "original" },
-  basicMomentBg: { number: "10", label: "基本体系M图", baseWidth: 350, ratio: 3221 / 949, reveal: 5, curve: "moment", system: "basic" },
-  basicShearBg: { number: "11", label: "基本体系FQ图", baseWidth: 350, ratio: 3211 / 962, reveal: 5, curve: "shear", system: "basic" },
+  conceptReleased: { number: "04", label: "圆二：解除约束", baseWidth: 275, ratio: 1, reveal: 1 },
+  conceptRedundant: { number: "05", label: "圆三：力代约束", baseWidth: 275, ratio: 1, reveal: 1 },
+  basicEquation: { number: "06", label: "下部平衡方程", baseWidth: 380, ratio: 3285 / 1460, reveal: 2 },
+  basicStructure: { number: "07", label: "基本体系", baseWidth: 480, ratio: 4101 / 1912, reveal: 2 },
+  originalMomentBg: { number: "08", label: "原结构M图", baseWidth: 350, ratio: 3221 / 1227, reveal: 3, curve: "moment", system: "original" },
+  originalShearBg: { number: "09", label: "原结构FQ图", baseWidth: 350, ratio: 3211 / 1227, reveal: 3, curve: "shear", system: "original" },
+  basicMomentBg: { number: "10", label: "基本体系M图", baseWidth: 350, ratio: 3221 / 949, reveal: 3, curve: "moment", system: "basic" },
+  basicShearBg: { number: "11", label: "基本体系FQ图", baseWidth: 350, ratio: 3211 / 962, reveal: 3, curve: "shear", system: "basic" },
 };
 const FORCE_LABEL_META = {
   originalFyB: { label: "上部结构 FyB", parent: "originalStructure", type: "fyb" },
@@ -110,7 +111,8 @@ const DEFORMATION_LABEL_MAP = {
 };
 
 function deformationStepConfig(step = Number(currentState?.deformation_reveal_step || 0)) {
-  return deformationLayout?.steps?.[String(step)] || null;
+  if (currentState?.stage !== 3) return null;
+  return deformationLayout?.steps?.[String([1, 2, 2, 3, 4, 4][step] ?? 1)] || null;
 }
 
 function normalizeDeformationLayout(layout) {
@@ -201,14 +203,20 @@ const DEFAULT_FORCE_LAYOUT = {
 let forceLayout = structuredClone(DEFAULT_FORCE_LAYOUT);
 
 function forceAsset(slot) {
+  if (slot === "originalEquation" || slot === "basicEquation") {
+    // Vector equations use the same positive directions as the reaction readouts.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 445"><rect width="1000" height="445" rx="12" fill="#f2f2f2"/><g font-family="Times New Roman,serif" font-size="53" font-style="italic"><text x="18" y="94">∑ F<tspan baseline-shift="sub" font-size="32">x</tspan> = 0　<tspan fill="#315ba2">F<tspan baseline-shift="sub" font-size="32">xA</tspan></tspan> = 0</text><text x="18" y="238">∑ F<tspan baseline-shift="sub" font-size="32">y</tspan> = 0　−ql + <tspan fill="#315ba2">F<tspan baseline-shift="sub" font-size="32">yA</tspan></tspan> + <tspan fill="#d00000">F<tspan baseline-shift="sub" font-size="32">yB</tspan></tspan> = 0</text><text x="18" y="380">∑ M = 0　−ql²/2 + <tspan fill="#315ba2">M<tspan baseline-shift="sub" font-size="32">A</tspan></tspan> + <tspan fill="#d00000">F<tspan baseline-shift="sub" font-size="32">yB</tspan></tspan>l = 0</text></g></svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  }
   return runtimeUrl(forceLayout.assets[slot] || DEFAULT_FORCE_LAYOUT.assets[slot]);
 }
 
 function forceCurveResponse(type, r, s, mode = "combined") {
   if (type === "moment") {
-    if (mode === "uniform") return -((1 - s) ** 2) / 2;
-    if (mode === "fyb") return r * (1 - s);
-    return r * (1 - s) - (1 - s) ** 2 / 2;
+    // 教学显示采用用户约定的力矩正向；曲线及标注一起翻转。
+    if (mode === "uniform") return ((1 - s) ** 2) / 2;
+    if (mode === "fyb") return -r * (1 - s);
+    return (1 - s) ** 2 / 2 - r * (1 - s);
   }
   if (mode === "uniform") return -(1 - s);
   if (mode === "fyb") return r;
@@ -244,7 +252,7 @@ function applyForceLabelLayout(context = {}) {
     const current = context[system] || { r: x1, mode: "combined" };
     const response = forceCurveResponse(isMoment ? "moment" : "shear", current.r, s, current.mode);
     const baselineKey = `${parentMeta.system}${isMoment ? "Moment" : "Shear"}Baseline`;
-    const direction = isMoment ? values.momentDirection : 1;
+    const direction = isMoment ? -values.momentDirection : 1;
     const scale = isMoment ? values.momentScale : values.shearScale;
     const screenDelta = direction * response * scale;
     const curveY = values[baselineKey] + screenDelta;
@@ -301,7 +309,9 @@ function setPreviewTimerRunning(running) {
 
 if (isPreview) {
   window.addEventListener("message", (event) => {
-    if (event.origin !== location.origin || event.data?.type !== "beam-preview-timer") return;
+    const sameOrigin = event.origin === location.origin
+      || (location.protocol === "file:" && event.origin === "null");
+    if (event.source !== window.parent || !sameOrigin || event.data?.type !== "beam-preview-timer") return;
     setPreviewTimerRunning(Boolean(event.data.running));
   });
 }
@@ -312,8 +322,8 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove("show"), 1500);
 }
 
-const OFFLINE_CLASSROOM_STATE_KEY = "beam-offline-classroom-state-v1";
-const OFFLINE_STUDENT_STATE_KEY = "beam-offline-student-state-v1";
+const OFFLINE_CLASSROOM_STATE_KEY = "beam-offline-classroom-state-v2-sep13";
+const OFFLINE_STUDENT_STATE_KEY = "beam-offline-student-state-v2-sep13";
 
 function offlineStateKey() {
   return role === "teacher" || isPreview ? OFFLINE_CLASSROOM_STATE_KEY : OFFLINE_STUDENT_STATE_KEY;
@@ -360,12 +370,12 @@ function applyOfflineAction(state, action) {
   if (action.type === "set_stage") {
     next.stage = Math.max(0, Math.min(3, Number(action.stage || 0)));
     next.stage_started_at = new Date().toISOString();
-    if (next.stage === 2) next.force_reveal_step = state.stage === 3 ? 5 : 0;
-    if (next.stage === 3 && state.stage !== 3) next.deformation_reveal_step = 0;
+    if (next.stage === 2) next.force_reveal_step = 0;
+    if (next.stage === 3) next.deformation_reveal_step = 0;
   } else if (action.type === "set_force_reveal") {
-    next.force_reveal_step = Math.max(0, Math.min(5, Number(action.step || 0)));
+    next.force_reveal_step = Math.max(0, Math.min(3, Number(action.step || 0)));
   } else if (action.type === "set_deformation_reveal") {
-    next.deformation_reveal_step = Math.max(0, Math.min(4, Number(action.step || 0)));
+    next.deformation_reveal_step = Math.max(0, Math.min(5, Number(action.step || 0)));
   } else if (action.type === "set_voting") {
     next.voting_open = Boolean(action.open);
     if (action.open) {
@@ -472,20 +482,20 @@ function renderVote() {
     <p class="vote-status" id="voteStatus"></p>`, `<h3>先判，再验</h3><p class="lead">这里没有“正确选项”提示。你的判断会进入教师端汇总，但不会显示姓名。</p>
       <div class="formula equilibrium-system">
         <div>∑ F<sub>x</sub> = 0　 <span class="eq-blue">F<sub>xA</sub></span> = 0</div>
-        <div>∑ F<sub>y</sub> = 0　 q · l − <span class="eq-blue">F<sub>yA</sub></span> − <span class="eq-red">F<sub>yB</sub></span> = 0</div>
-        <div>∑ M = 0　 q · <span class="fraction"><span>l²</span><span>2</span></span> + <span class="eq-blue">M<sub>A</sub></span> − <span class="eq-red">F<sub>yB</sub></span> · l = 0</div>
+        <div>∑ F<sub>y</sub> = 0　 −q · l + <span class="eq-blue">F<sub>yA</sub></span> + <span class="eq-red">F<sub>yB</sub></span> = 0</div>
+        <div>∑ M = 0　 −q · <span class="fraction"><span>l²</span><span>2</span></span> + <span class="eq-blue">M<sub>A</sub></span> + <span class="eq-red">F<sub>yB</sub></span> · l = 0</div>
       </div>
       <div class="candidate-solutions">
         <div class="candidate-heading"><span>三组平衡候选</span><span><span class="eq-blue">F<sub>xA</sub></span> = 0</span></div>
         <div class="candidate-row">
           <span><span class="eq-red">F<sub>yB</sub></span> = 0</span>
           <span><span class="eq-blue">F<sub>yA</sub></span> = q · l</span>
-          <span><span class="eq-blue">M<sub>A</sub></span> = −q · <span class="fraction"><span>l²</span><span>2</span></span></span>
+          <span><span class="eq-blue">M<sub>A</sub></span> = q · <span class="fraction"><span>l²</span><span>2</span></span></span>
         </div>
         <div class="candidate-row">
           <span><span class="eq-red">F<sub>yB</sub></span> = <span class="fraction"><span>q · l</span><span>4</span></span></span>
           <span><span class="eq-blue">F<sub>yA</sub></span> = <span class="fraction"><span>3q · l</span><span>4</span></span></span>
-          <span><span class="eq-blue">M<sub>A</sub></span> = −q · <span class="fraction"><span>l²</span><span>4</span></span></span>
+          <span><span class="eq-blue">M<sub>A</sub></span> = q · <span class="fraction"><span>l²</span><span>4</span></span></span>
         </div>
         <div class="candidate-row">
           <span><span class="eq-red">F<sub>yB</sub></span> = <span class="fraction"><span>q · l</span><span>2</span></span></span>
@@ -541,7 +551,7 @@ function renderVoteFeedback() {
     ${voteFeedbackSummaryHtml(currentState)}
     ${isSelfGuidedStudent ? '<div class="button-row"><button class="primary" id="continueFromFeedback">进入02 · 受力数验</button></div>' : ""}`,
     `<h3>判断之后，还要验证</h3><p class="lead">投票呈现的是当前认识，并不直接公布正确答案。下一步，让内力图提供可以观察、可以比较的证据。</p>`);
-  document.querySelector("#continueFromFeedback")?.addEventListener("click", () => setSelfGuidedPosition(2, 1));
+  document.querySelector("#continueFromFeedback")?.addEventListener("click", () => setSelfGuidedPosition(2, 0));
 }
 
 function updateVoteAvailability(state) {
@@ -634,11 +644,13 @@ function bindForceStoryboard() {
   const sliders = Array.from(document.querySelectorAll("[data-force-slider]"));
   const refresh = (step = currentState.force_reveal_step || 0) => {
     const heading = document.querySelector(".force-story:not(.deformation-story) h1");
-    if (heading) heading.innerHTML = forceStepHeadings[Math.max(0, Math.min(Number(step), 5))];
+    if (heading) heading.innerHTML = forceStepHeadings[Math.max(0, Math.min(Number(step), 3))];
     sliders.forEach((slider) => { slider.value = String(x1); });
     document.querySelectorAll("[data-force-value]").forEach((value) => { value.textContent = `${x1.toFixed(3)} ql`; });
     document.querySelectorAll("[data-force-live-value]").forEach((value) => {
-      value.innerHTML = formatForceValue(value.dataset.forceLiveValue, x1);
+      value.innerHTML = step < 3 && ["originalFyB", "basicFyB"].includes(value.dataset.forceLabelSlot)
+        ? '<i>F</i><sub>yB</sub> = ?'
+        : formatForceValue(value.dataset.forceLiveValue, x1);
     });
     document.querySelectorAll("[data-force-readouts]").forEach((readouts) => { readouts.innerHTML = labReadouts(false); });
     document.querySelectorAll("[data-force-curve]").forEach((canvas) => drawForceCurve(canvas, x1, canvas.dataset.forceCurve, canvas.dataset.forceSystem));
@@ -656,89 +668,59 @@ function bindForceStoryboard() {
 }
 
 function bindDeformationStoryboard() {
-  const originalSlider = document.querySelector('[data-force-channel="original"]');
-  const basicSlider = document.querySelector('[data-force-channel="basic"]');
-  const originalCard = originalSlider.closest(".force-control");
-  const basicCard = basicSlider.closest(".force-control");
-
+  const slider = document.querySelector('[data-force-channel="basic"]');
+  const card = slider.closest('.force-control');
+  let keyboardInput = false;
+  slider.addEventListener('keydown', () => { keyboardInput = true; });
+  slider.addEventListener('pointerdown', () => { keyboardInput = false; });
   const refresh = (step = Number(currentState?.deformation_reveal_step || 0)) => {
-    const decomposed = step >= 2;
-    const mode = step === 2 ? "uniform" : step === 3 ? "fyb" : "combined";
-
-    if (step === 2 || (step === 3 && lastDeformationRevealStep < 2)) deformationBasicX1 = 0;
-    if (step === 4 && lastDeformationRevealStep < 2) deformationBasicX1 = x1;
-    if ((step === 3 || step === 4) && lastDeformationRevealStep !== step) deformationBasicX1 = x1;
-    originalSlider.value = String(x1);
-    originalCard.querySelector("[data-force-value]").textContent = `${x1.toFixed(3)} ql`;
-    originalCard.querySelector("[data-force-readouts]").innerHTML = labReadouts(false, x1);
-
-    if (!decomposed) deformationBasicX1 = x1;
-    basicSlider.value = String(deformationBasicX1);
-    basicSlider.disabled = step === 2;
-    basicCard.querySelector("[data-force-value]").textContent = `${deformationBasicX1.toFixed(3)} ql`;
-    basicCard.querySelector("[data-force-readouts]").innerHTML = labReadouts(false, deformationBasicX1, mode);
-    basicCard.querySelector(".hint").innerHTML = step === 2
-      ? "均布荷载单独作用，F<sub>yB</sub> 固定为零。"
-      : step === 3
-        ? "拖动下排 F<sub>yB</sub>，观察其弯矩与变形响应。"
-        : step >= 4
-          ? "均布荷载与 F<sub>yB</sub> 共同作用，拖动下排滑块观察组合响应。"
-          : "上下滑块同步，两组内力图同步变化。";
-
-    document.querySelectorAll('[data-force-curve][data-force-system="original"]').forEach((canvas) => {
-      drawForceCurve(canvas, x1, canvas.dataset.forceCurve, "original", "combined");
+    const uniform = step === 1 || step === 2;
+    const mode = uniform ? 'uniform' : step === 3 ? 'fyb' : 'combined';
+    deformationBasicX1 = uniform ? 0 : x1;
+    slider.value = String(deformationBasicX1);
+    slider.disabled = uniform;
+    card.querySelector('[data-force-value]').textContent = `${deformationBasicX1.toFixed(3)} ql`;
+    card.querySelector('[data-force-readouts]').innerHTML = labReadouts(false, deformationBasicX1, mode)
+      + (step >= 4 ? `<div class="readout displacement-readout"><strong>${(Math.abs(1/8-x1/3) < 1e-10 ? 0 : 1/8-x1/3).toFixed(5)} ql⁴/EI</strong><small>B点位移 Δ<sub>B</sub>（向下为正）</small></div>` : '');
+    card.querySelector('.hint').innerHTML = uniform ? '均布荷载单独作用，F<sub>yB</sub> 固定为零。' : '一个滑块共同控制上下两排。';
+    card.querySelector('[data-special-candidates]').hidden = step < 4;
+    document.querySelectorAll('[data-special-candidate]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.specialCandidate) === x1)));
+    document.querySelectorAll('[data-force-curve]').forEach(canvas => {
+      const original = canvas.dataset.forceSystem === 'original';
+      drawForceCurve(canvas, original ? x1 : deformationBasicX1, canvas.dataset.forceCurve, canvas.dataset.forceSystem, original ? 'combined' : mode);
     });
-    document.querySelectorAll('[data-force-curve][data-force-system="basic"]').forEach((canvas) => {
-      drawForceCurve(canvas, deformationBasicX1, canvas.dataset.forceCurve, "basic", mode);
-    });
-    const labelContext = {
-      original: { r: x1, mode: "combined" },
-      basic: { r: deformationBasicX1, mode },
-    };
-    document.querySelectorAll("[data-force-live-value]").forEach((label) => {
-      const labelMeta = FORCE_LABEL_META[label.dataset.forceLabelSlot];
-      const system = labelMeta.parent.startsWith("basic") ? "basic" : "original";
-      const current = labelContext[system];
+    const labelContext = { original: { r: x1, mode: 'combined' }, basic: { r: deformationBasicX1, mode } };
+    document.querySelectorAll('[data-force-live-value]').forEach(label => {
+      const meta = FORCE_LABEL_META[label.dataset.forceLabelSlot];
+      const current = labelContext[meta.parent.startsWith('basic') ? 'basic' : 'original'];
       label.innerHTML = formatForceValue(label.dataset.forceLiveValue, current.r, current.mode);
       label.dataset.forceMode = current.mode;
     });
-    drawDecompositionStructure(document.querySelector("[data-deformation-load]"), mode, deformationBasicX1);
-    const topDeformationCanvas = document.querySelector("[data-deformation-load-top]");
-    if (topDeformationCanvas) {
-      topDeformationCanvas.hidden = step !== 4;
-      if (step === 4) drawDecompositionStructure(topDeformationCanvas, "combined", THEORETICAL_FYB_RATIO);
-    }
-    updateDeformationFormulaValue(step, deformationBasicX1);
-    if (step >= 1 && deformationStepConfig(step)) applyDeformationStepLayout(step);
-    else applyForceLabelLayout(labelContext);
+    drawDecompositionStructure(document.querySelector('[data-deformation-load]'), mode, deformationBasicX1);
+    const top = document.querySelector('[data-deformation-load-top]');
+    top.hidden = step < 4;
+    if (step >= 4) drawDecompositionStructure(top, 'combined', THEORETICAL_FYB_RATIO);
+    applyDeformationStepLayout(step);
     lastDeformationRevealStep = step;
   };
-
   forceStoryboardRefresh = refresh;
-  originalSlider.addEventListener("input", () => {
-    x1 = Number(originalSlider.value);
-    const step = Number(currentState?.deformation_reveal_step || 0);
-    if (step < 2 || step === 3 || step === 4) deformationBasicX1 = x1;
-    refresh();
-  });
-  originalSlider.addEventListener("change", () => api({ type: "observe_force", x1 }));
-  basicSlider.addEventListener("input", () => {
-    const step = Number(currentState?.deformation_reveal_step || 0);
-    if (step < 2) {
-      x1 = Number(basicSlider.value);
-      deformationBasicX1 = x1;
-    } else if (step === 3 || step === 4) {
-      deformationBasicX1 = Number(basicSlider.value);
-      x1 = deformationBasicX1;
-    }
+  slider.addEventListener('input', () => {
+    const raw = Number(slider.value);
+    const step = Number(currentState.deformation_reveal_step || 0);
+    x1 = step >= 4 && !keyboardInput && Math.abs(raw - .375) <= .008 ? .375 : raw;
     refresh(step);
   });
-  basicSlider.addEventListener("change", () => api({ type: "observe_force", x1: deformationBasicX1 }));
+  slider.addEventListener('change', () => { slider.value = String(x1); api({ type: 'observe_force', x1 }); });
+  document.querySelectorAll('[data-special-candidate]').forEach(button => button.addEventListener('click', () => {
+    x1 = Number(button.dataset.specialCandidate);
+    slider.value = String(x1);
+    refresh();
+  }));
   refresh();
 }
 
 function updateForceReveal(state) {
-  const step = Math.max(0, Math.min(Number(state.force_reveal_step || 0), 5));
+  const step = Math.max(0, Math.min(Number(state.force_reveal_step || 0), 3));
   document.querySelectorAll("[data-reveal]").forEach((element) => {
     element.hidden = Number(element.dataset.reveal) > step;
   });
@@ -784,13 +766,13 @@ function applyDeformationStepLayout(step) {
     }
     const isTop = configSlot.startsWith("top");
     const currentR = isTop ? x1 : deformationBasicX1;
-    const mode = isTop ? "combined" : step === 2 ? "uniform" : step === 3 ? "fyb" : "combined";
+    const mode = isTop ? "combined" : (step === 1 || step === 2) ? "uniform" : step === 3 ? "fyb" : "combined";
     const numeric = stepConfig.numeric;
     const localX = position.x / 100 * 1000;
     const s = Math.max(0, Math.min(1, (localX - numeric.momentX0) / (numeric.momentXB - numeric.momentX0)));
     const response = forceCurveResponse("moment", currentR, s, mode);
     const baseline = isTop ? numeric.topMomentBaseline : numeric.bottomMomentBaseline;
-    const screenDelta = numeric.momentDirection * response * numeric.momentScale;
+    const screenDelta = -numeric.momentDirection * response * numeric.momentScale;
     const elementSlot = isTop ? "originalMomentBg" : "basicMomentBg";
     const canvasHeight = Math.round(1000 / FORCE_ELEMENT_META[elementSlot].ratio);
     const curveYPercent = (baseline + screenDelta) / canvasHeight * 100;
@@ -800,7 +782,7 @@ function applyDeformationStepLayout(step) {
   });
   const formula = document.querySelector("[data-deformation-formula]");
   if (formula) {
-    formula.hidden = step < 2;
+    formula.hidden = ![2, 3, 4, 5].includes(step);
     if (step >= 2) {
       formula.innerHTML = deformationFormulaHtml(step, deformationBasicX1);
       formula.style.left = `${stepConfig.formula.x / FORCE_CANVAS.width * 100}%`;
@@ -821,61 +803,40 @@ function deformationFormulaHtml(step, r = deformationBasicX1) {
   const fyb = '<span class="fraction"><span><i>l</i><sup>3</sup></span><span>3<i>E</i><i>I</i></span></span><i>F</i><sub><i>yB</i></sub>';
   if (step === 2) return uniform;
   if (step === 3) return `&minus;${fyb}`;
+  if (step === 4) return `Δ<sub>B</sub> = ${uniform} &minus; ${fyb}`;
   const rawCoefficient = 1 / 8 - r / 3;
   const coefficient = Math.abs(rawCoefficient) < 0.0000005 ? 0 : rawCoefficient;
   const coefficientText = coefficient.toFixed(4).replace("-", "&minus;");
   const result = `${coefficientText} <span class="fraction compact-fraction"><span><i>q</i><i>l</i><sup>4</sup></span><span><i>E</i><i>I</i></span></span>`;
-  return `${uniform} &minus; ${fyb} = ${result}`;
+  return `Δ<sub>B</sub> = ${uniform} &minus; ${fyb} = ${result}`;
 }
 
 function updateDeformationReveal(state) {
-  const story = document.querySelector(".deformation-story");
+  const story = document.querySelector('.deformation-story');
   if (!story) return;
-  const rawStep = state.deformation_reveal_step == null
-    ? (Number(state.force_reveal_step) === 1 ? 1 : 0)
-    : Number(state.deformation_reveal_step || 0);
-  const step = Math.max(0, Math.min(rawStep, 4));
-  const visibleSlots = step === 0
-    ? new Set(["originalStructure", "originalMomentBg", "originalShearBg", "basicStructure", "basicMomentBg", "basicShearBg"])
-    : new Set(["originalStructure", "originalMomentBg", "basicStructure", "basicMomentBg"]);
-
+  const step = Math.max(0, Math.min(Number(state.deformation_reveal_step || 0), 5));
+  const visible = new Set(['originalStructure', 'originalMomentBg', 'basicStructure', 'basicMomentBg']);
   story.dataset.revealStep = String(step);
-  story.classList.toggle("deformation-compare", step >= 1);
-  story.classList.toggle("deformation-decomposed", step >= 2);
-  // story.querySelector("h1").textContent = [
-  //   "FyB怎么变化都行，这么神奇？我们切开支座看看",
-  //   "像第三章内力分析一样，把竖向链杆切开",
-  //   "先看均布荷载单独作用",
-  //   "再看 FyB 单独作用",
-  //   "将均布荷载与 FyB 叠加起来",
-  // ][step];
-  story.querySelector("h1").innerHTML = [
-    "同一个<i>F</i><sub>yB</sub>下，解除连接前后的截面内力完全一致",
-    "可是，切开竖向链杆时，我们到底拿走了什么？",
-    "先看均布荷载单独作用",
-    "再看 <i>F</i><sub>yB</sub> 单独作用",
-    "将均布荷载与 <i>F</i><sub>yB</sub> 叠加起来",
+  story.classList.add('deformation-compare');
+  story.classList.toggle('deformation-decomposed', step >= 1);
+  story.querySelector('h1').innerHTML = [
+    '可是，切开竖向链杆时，我们到底拿走了什么？',
+    '先看均布荷载单独作用',
+    '均布荷载引起的B点位移',
+    '再看 <i>F</i><sub>yB</sub> 单独作用',
+    '将均布荷载与 <i>F</i><sub>yB</sub> 叠加起来',
+    '写出B点位移的叠加表达式',
   ][step];
-
-  story.querySelectorAll("[data-element-slot]").forEach((element) => {
-    element.hidden = !visibleSlots.has(element.dataset.elementSlot);
-  });
-  story.querySelectorAll("[data-force-label-slot]").forEach((label) => {
-    label.hidden = step === 2 && label.dataset.forceLabelSlot === "basicFyB";
-  });
-  const basicImage = story.querySelector('[data-element-slot="basicStructure"] > img');
-  const decompositionCanvas = story.querySelector("[data-deformation-load]");
-  const topDeformationCanvas = story.querySelector("[data-deformation-load-top]");
-  const rowDivider = story.querySelector("[data-deformation-divider]");
-  if (basicImage) basicImage.hidden = step >= 2 && !deformationStepConfig(step);
-  if (decompositionCanvas) decompositionCanvas.hidden = step < 2;
-  if (topDeformationCanvas) topDeformationCanvas.hidden = step !== 4;
-  if (rowDivider) rowDivider.hidden = step < 1;
-
+  story.querySelectorAll('[data-element-slot]').forEach(element => { element.hidden = !visible.has(element.dataset.elementSlot); });
+  story.querySelectorAll('[data-force-label-slot]').forEach(label => { label.hidden = (step === 1 || step === 2) && label.dataset.forceLabelSlot === 'basicFyB'; });
+  story.querySelector('[data-deformation-load]').hidden = step === 0;
+  story.querySelector('[data-deformation-load-top]').hidden = step < 4;
+  story.querySelector('[data-deformation-divider]').hidden = false;
+  story.querySelectorAll('[data-structure-caption]').forEach(label => { label.hidden = ![0, 4, 5].includes(step); });
   applyForceLayout();
-  if (step >= 1) applyDeformationCompareLayout();
+  applyDeformationCompareLayout();
   if (forceStoryboardRefresh) forceStoryboardRefresh(step);
-  if (step >= 1) applyDeformationStepLayout(step);
+  applyDeformationStepLayout(step);
 }
 
 function renderForce() {
@@ -885,8 +846,7 @@ function renderForce() {
         ${Object.keys(FORCE_ELEMENT_META).map(forceElementHtml).join("")}
       </div>
       <div class="force-controls">
-        <aside class="control-card force-control"><div class="range-row"><input data-force-slider type="range" min="0" max="1" step="0.005" value="${x1}" aria-label="原结构FyB滑块"/><strong data-force-value></strong></div><div data-force-readouts></div><p class="hint">拖动 F<sub>yB</sub>，原结构M图和FQ图实时更新。</p></aside>
-        <aside class="control-card force-control" data-reveal="5" hidden><div class="range-row"><input data-force-slider type="range" min="0" max="1" step="0.005" value="${x1}" aria-label="基本体系FyB滑块"/><strong data-force-value></strong></div><div data-force-readouts></div><p class="hint">上下滑块同步，两组内力图同步变化。</p></aside>
+        <aside class="control-card force-control" data-reveal="3" hidden><div class="range-row"><input data-force-slider type="range" min="0" max="1" step="0.005" value="${x1}" aria-label="原结构FyB滑块"/><strong data-force-value></strong></div><div data-force-readouts></div><p class="hint">拖动同一个 F<sub>yB</sub>，上下两组内力图同步更新。</p></aside>
       </div>
     </div>
   </section>`;
@@ -904,11 +864,10 @@ function renderDeformation() {
     <div class="force-composition deformation-composition">
       <div class="force-free-canvas" aria-label="切开竖向链杆前后的受力对照">
         <div class="deformation-row-divider" data-deformation-divider hidden aria-hidden="true"></div>
-        ${slots.map(forceElementHtml).join("")}
+        ${slots.map(forceElementHtml).join("")}<div class="structure-caption top-caption" data-structure-caption>未知的超静定结构</div><div class="structure-caption bottom-caption" data-structure-caption>已知的静定结构</div>
       </div>
       <div class="force-controls">
-        <aside class="control-card force-control"><div class="range-row"><input data-force-slider data-force-channel="original" type="range" min="0" max="1" step="0.005" value="${x1}" aria-label="原结构FyB滑块"/><strong data-force-value></strong></div><div data-force-readouts></div><p class="hint">拖动 F<sub>yB</sub>，原结构M图和FQ图实时更新。</p></aside>
-        <aside class="control-card force-control"><div class="range-row"><input data-force-slider data-force-channel="basic" type="range" min="0" max="1" step="0.005" value="0" aria-label="切开链杆后FyB滑块"/><strong data-force-value></strong></div><div data-force-readouts></div><p class="hint">上下滑块同步，两组内力图同步变化。</p></aside>
+        <aside class="control-card force-control"><div class="range-row"><input data-force-slider data-force-channel="basic" type="range" min="0" max="1" step="0.005" value="0" aria-label="切开链杆后FyB滑块"/><strong data-force-value></strong></div><div class="special-candidates" data-special-candidates hidden><button class="secondary" data-special-candidate="0">FyB＝0</button><button class="secondary" data-special-candidate="0.25">FyB＝ql/4</button><button class="secondary" data-special-candidate="0.5">FyB＝ql/2</button></div><div data-force-readouts></div><p class="hint">上下滑块同步，两组内力图同步变化。</p></aside>
       </div>
     </div>
   </section>`;
@@ -1048,7 +1007,7 @@ function drawLab(canvas, r, deformation, options = {}) {
   ctx.strokeStyle="#d9d1c3";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x0,base1);ctx.lineTo(xB,base1);ctx.moveTo(x0,base2);ctx.lineTo(xB,base2);ctx.stroke();
   ctx.fillStyle="#64706a";ctx.font="13px Microsoft YaHei";ctx.fillText("弯矩图 M / ql²",x0,base1-42);ctx.fillText("剪力图 Q / ql",x0,base2-42);
   ctx.strokeStyle="#ef6b3b";ctx.lineWidth=3;ctx.beginPath();
-  for(let i=0;i<=80;i++){const s=i/80,m=r*(1-s)-(1-s)**2/2,x=x0+(xB-x0)*s,y=base1-m*120;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.stroke();
+  for(let i=0;i<=80;i++){const s=i/80,m=forceCurveResponse("moment",r,s),x=x0+(xB-x0)*s,y=base1-m*120;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.stroke();
   ctx.strokeStyle="#174d61";ctx.beginPath();
   for(let i=0;i<=80;i++){const s=i/80,qv=r-(1-s),x=x0+(xB-x0)*s,y=base2-qv*58;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.stroke();
 }
@@ -1198,7 +1157,8 @@ function drawForceCurve(canvas, r, type, system, mode = "combined") {
   const x0 = type === "moment" ? layout.momentX0 : layout.shearX0;
   const xB = type === "moment" ? layout.momentXB : layout.shearXB;
   const scale = type === "moment" ? layout.momentScale : layout.shearScale;
-  const direction = type === "moment" ? layout.momentDirection : 1;
+  // 屏幕 y 向下：只翻转绘图方向，力矩数值及符号保持原约定。
+  const direction = type === "moment" ? -layout.momentDirection : 1;
   const color = customConfig
     ? (system === "original" ? customConfig.styles.topColor : customConfig.styles.bottomColor)
     : mode === "uniform"
@@ -1407,7 +1367,7 @@ const TOP_DEFORMATION_EDITOR_NUMERIC = [
   ["上排曲线线宽", "topDeformationLineWidth", 1, 16, .5],
 ];
 
-const OFFLINE_DEFORMATION_LAYOUT_KEY = "beam-offline-deformation-layout-v1";
+const OFFLINE_DEFORMATION_LAYOUT_KEY = "beam-offline-deformation-layout-v2-sep13";
 
 function deformationAxisHtml(group, slot, key, label, value, min, max, step) {
   return `<label class="layout-control element-axis"><span>${label}<output data-d-output="${group}.${slot}.${key}"></output></span><input data-d-group="${group}" data-d-slot="${slot}" data-d-key="${key}" type="range" min="${min}" max="${max}" step="${step}" value="${value}"/><input class="layout-number" data-d-group="${group}" data-d-slot="${slot}" data-d-key="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${value}"/></label>`;
@@ -1674,12 +1634,10 @@ function renderVoteComments(comments = [], visible = true) {
   });
 }
 
-async function setTeacherStage(stage) {
-  const previousStage = currentState.stage;
+async function setTeacherStage(stage, returnToLast = false) {
   await api({ type: "set_stage", stage });
-  if (previousStage === 3 && stage === 2) {
-    await api({ type: "set_force_reveal", step: 5 });
-  }
+  if (returnToLast && stage === 2) await api({ type: "set_force_reveal", step: 3 });
+  if (returnToLast && stage === 3) await api({ type: "set_deformation_reveal", step: 5 });
 }
 
 function renderTeacher(state) {
@@ -1708,7 +1666,7 @@ function renderTeacher(state) {
       </div>
     </section>`;
     document.querySelectorAll(".roadmap-step[data-stage]").forEach(button => button.addEventListener("click", () => setTeacherStage(Number(button.dataset.stage))));
-    document.querySelector("#previousStage").addEventListener("click", () => setTeacherStage(Math.max(0,currentState.stage-1)));
+    document.querySelector("#previousStage").addEventListener("click", () => setTeacherStage(Math.max(0,currentState.stage-1), true));
     document.querySelector("#nextStage").addEventListener("click", () => setTeacherStage(Math.min(3,currentState.stage+1)));
     document.querySelector("#endVote").addEventListener("click", () => api({type:"show_vote_feedback"}));
     document.querySelector("#reopenVote").addEventListener("click", () => api({type:"set_voting",open:true}));
@@ -1720,10 +1678,10 @@ function renderTeacher(state) {
           : (Number(currentState.force_reveal_step) === 1 ? 1 : 0);
         return api({
           type: supportsDeformationReveal ? "set_deformation_reveal" : "set_force_reveal",
-          step: Math.min(1, currentStep + 1),
+          step: Math.min(5, currentStep + 1),
         });
       }
-      return api({type:"set_force_reveal",step:Math.min(5,(currentState.force_reveal_step || 0)+1)});
+      return api({type:"set_force_reveal",step:Math.min(3,(currentState.force_reveal_step || 0)+1)});
     });
     document.querySelector("#forceRevealReset").addEventListener("click", () => api({
       type: currentState.stage === 3 && currentState.deformation_reveal_step != null ? "set_deformation_reveal" : "set_force_reveal",
@@ -1736,7 +1694,7 @@ function renderTeacher(state) {
     document.querySelector("#focusPreview").addEventListener("click", (event) => {
       const focused = document.querySelector("#teacherCockpit").classList.toggle("preview-focus");
       event.currentTarget.textContent = focused ? "返回控制台" : "放大学生预览";
-      document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.origin);
+      document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.protocol === "file:" ? "*" : location.origin);
     });
     document.querySelector("#resetButton").addEventListener("click", async () => { await api({type:"reset"}); showToast("试讲数据已重置"); });
     document.querySelector("#copyUrl").addEventListener("click", async () => { await navigator.clipboard.writeText(config.student_url); showToast("学生网址已复制"); });
@@ -1756,7 +1714,7 @@ function renderTeacher(state) {
     });
     document.querySelector("#studentPreview").addEventListener("load", () => {
       const focused = document.querySelector("#teacherCockpit").classList.contains("preview-focus");
-      document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.origin);
+      document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.protocol === "file:" ? "*" : location.origin);
     });
     document.querySelector("#toggleComments").addEventListener("click", () => api({type:"toggle_comments", visible:!currentState.comments_visible}));
     document.querySelector("#clearComments").addEventListener("click", async () => { await api({type:"clear_comments"}); showToast("补充观点已清空"); });
@@ -1787,12 +1745,12 @@ function renderTeacher(state) {
   const revealStep = state.stage === 3
     ? (state.deformation_reveal_step == null ? (Number(state.force_reveal_step) === 1 ? 1 : 0) : Number(state.deformation_reveal_step || 0))
     : (state.force_reveal_step || 0);
-  const revealMax = state.stage === 3 ? 4 : 5;
+  const revealMax = state.stage === 3 ? 5 : 3;
   forceRevealGrid.hidden = state.stage !== 2 && state.stage !== 3;
   forceRevealGrid.setAttribute("aria-label", state.stage === 3 ? "协调释理呈现进度" : "受力数验呈现进度");
   forceRevealGrid.querySelectorAll("[data-force-reveal-step]").forEach(button => {
     const step = Number(button.dataset.forceRevealStep);
-    button.hidden = state.stage === 3 && step > 4;
+    button.hidden = state.stage === 2 && step > 3;
     const currentRevealStep = state.stage === 3 ? revealStep : Number(state.force_reveal_step || 0);
     const active = step <= currentRevealStep;
     button.classList.toggle("active", active);
@@ -1814,15 +1772,15 @@ function renderStudent() {
 }
 
 function selfGuidedStep(stage = currentState.stage) {
-  if (stage === 2) return Math.max(1, Math.min(5, Number(currentState.force_reveal_step || 1)));
-  if (stage === 3) return Math.max(1, Math.min(4, Number(currentState.deformation_reveal_step || 1)));
+  if (stage === 2) return Math.max(0, Math.min(3, Number(currentState.force_reveal_step || 0)));
+  if (stage === 3) return Math.max(0, Math.min(5, Number(currentState.deformation_reveal_step || 0)));
   return 0;
 }
 
 function selfGuidedNavigationHtml() {
   const stage = Number(currentState.stage || 1);
   const step = selfGuidedStep(stage);
-  const substepMax = stage === 2 ? 5 : stage === 3 ? 4 : 0;
+  const substepMax = stage === 2 ? 3 : stage === 3 ? 5 : 0;
   const stageButtons = [1, 2, 3].map(number => `
     <button type="button" class="self-stage-button${number === stage ? " current" : ""}" data-self-stage="${number}">
       <span>0${number}</span>${stageLabels[number]}
@@ -1835,7 +1793,7 @@ function selfGuidedNavigationHtml() {
     }).join("")}</div>
   </div>` : `<p class="self-guide-hint">提交判断后，可进入02逐步观察。</p>`;
   const atStart = stage === 1;
-  const atEnd = stage === 3 && step === 4;
+  const atEnd = stage === 3 && step === 5;
   return `<nav class="self-guided-nav panel" aria-label="学生自主探究导航">
     <div class="self-stage-roadmap">${stageButtons}</div>
     <div class="self-step-control">${substeps}<div class="self-nav-actions">
@@ -1845,12 +1803,12 @@ function selfGuidedNavigationHtml() {
   </nav>`;
 }
 
-async function setSelfGuidedPosition(targetStage, targetStep = 1) {
+async function setSelfGuidedPosition(targetStage, targetStep = 0) {
   const stage = Math.max(1, Math.min(3, Number(targetStage || 1)));
   const stageChanged = stage !== currentState.stage;
   if (stageChanged) await api({ type: "set_stage", stage });
-  if (stage === 2) await api({ type: "set_force_reveal", step: Math.max(1, Math.min(5, Number(targetStep || 1))) });
-  if (stage === 3) await api({ type: "set_deformation_reveal", step: Math.max(1, Math.min(4, Number(targetStep || 1))) });
+  if (stage === 2) await api({ type: "set_force_reveal", step: Math.max(0, Math.min(3, Number(targetStep || 0))) });
+  if (stage === 3) await api({ type: "set_deformation_reveal", step: Math.max(0, Math.min(5, Number(targetStep || 0))) });
   document.body.dataset.stage = String(currentState.stage);
   if (stageChanged) {
     renderStudent();
@@ -1868,7 +1826,7 @@ function mountSelfGuidedNavigation() {
   app.insertAdjacentHTML("afterbegin", selfGuidedNavigationHtml());
   document.querySelectorAll("[data-self-stage]").forEach(button => button.addEventListener("click", () => {
     const stage = Number(button.dataset.selfStage);
-    const step = stage === currentState.stage ? selfGuidedStep(stage) : 1;
+    const step = 0;
     setSelfGuidedPosition(stage, step);
   }));
   document.querySelectorAll("[data-self-step]").forEach(button => button.addEventListener("click", () => {
@@ -1877,18 +1835,18 @@ function mountSelfGuidedNavigation() {
   document.querySelector('[data-self-nav="previous"]')?.addEventListener("click", () => {
     const stage = currentState.stage;
     const step = selfGuidedStep(stage);
-    if (stage === 3 && step > 1) return setSelfGuidedPosition(3, step - 1);
-    if (stage === 3) return setSelfGuidedPosition(2, 5);
-    if (stage === 2 && step > 1) return setSelfGuidedPosition(2, step - 1);
+    if (stage === 3 && step > 0) return setSelfGuidedPosition(3, step - 1);
+    if (stage === 3) return setSelfGuidedPosition(2, 3);
+    if (stage === 2 && step > 0) return setSelfGuidedPosition(2, step - 1);
     if (stage === 2) return setSelfGuidedPosition(1, 0);
   });
   document.querySelector('[data-self-nav="next"]')?.addEventListener("click", () => {
     const stage = currentState.stage;
     const step = selfGuidedStep(stage);
-    if (stage === 1) return setSelfGuidedPosition(2, 1);
-    if (stage === 2 && step < 5) return setSelfGuidedPosition(2, step + 1);
-    if (stage === 2) return setSelfGuidedPosition(3, 1);
-    if (stage === 3 && step < 4) return setSelfGuidedPosition(3, step + 1);
+    if (stage === 1) return setSelfGuidedPosition(2, 0);
+    if (stage === 2 && step < 3) return setSelfGuidedPosition(2, step + 1);
+    if (stage === 2) return setSelfGuidedPosition(3, 0);
+    if (stage === 3 && step < 5) return setSelfGuidedPosition(3, step + 1);
   });
 }
 
@@ -1972,3 +1930,5 @@ start().catch(() => {
   sessionPill.textContent = "连接失败";
   app.innerHTML = `<section class="panel waiting"><p class="eyebrow">CONNECTION ERROR</p><h1>课堂入口暂时不可用</h1><p class="lead" style="margin-inline:auto">请关闭当前页面，由教师重新运行 start-public.cmd，并使用新生成的完整网址或二维码进入。</p></section>`;
 });
+
+

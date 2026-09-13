@@ -379,3 +379,25 @@ th { color: var(--muted); font-size: 12px; }
   .preview-panel { position: static; }
   .device-frame iframe { height: 540px; }
 }
+
+/* 2026-09-13: original diagrams with the requested classroom steps. */
+.force-controls { grid-template-rows: auto; height: auto; }
+.force-controls [hidden], .force-free-canvas [hidden] { display: none !important; }
+.special-candidates { display: flex; flex-wrap: wrap; gap: 6px; }
+.special-candidates button { flex: 1 1 auto; padding: 9px 6px; font-size: 13px; }
+.special-candidates button[aria-pressed="true"] { color: var(--orange-dark); border-color: var(--orange); background: #fff4e8; }
+.displacement-readout { margin-top: 12px; width: 100%; text-align: center; }
+.displacement-readout strong { display: block; font-weight: 900; font-size: 23px; }
+.displacement-readout small { display: block; margin-top: 6px; }
+.structure-caption { position: absolute; left: 3%; color: var(--blue); font-weight: 800; font-size: clamp(14px, 1.5vw, 24px); z-index: 6; }
+.top-caption { top: 2%; }
+.bottom-caption { top: 46%; }
+.deformation-story[data-reveal-step="4"] .deformation-formula-label, .deformation-story[data-reveal-step="5"] .deformation-formula-label { left: 50% !important; top: 88% !important; transform: translateX(-50%) !important; font-size: clamp(14px, 1.5vw, 24px); }
+
+.force-control .displacement-readout strong { font-size: 23px; font-weight: 900; }
+
+
+.force-reveal-grid { grid-template-columns: repeat(5, 32px); }
+
+
+
