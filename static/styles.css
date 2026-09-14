@@ -413,6 +413,7 @@ th { color: var(--muted); font-size: 12px; }
 .force-reveal-grid { grid-template-columns: repeat(5, 32px); }
 
 @media (max-width: 780px) {
+  .force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].structure-caption { left: 6%; font-size: 12px; white-space: nowrap; }
   .force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].top-caption { top: 36%; }
 }
 
