@@ -58,6 +58,10 @@ let deformationLayout = null;
 let previewSeconds = 0;
 let previewStartedAt = 0;
 let previewTimerRunning = false;
+let aiDeformationEnabled = false;
+let aiDeformationTimer = null;
+let aiDeformationProgress = null;
+let aiDeformationAnimationFrame = null;
 const FORCE_CANVAS = { width: 1200, height: 1000 };
 
 function runtimeUrl(value) {
@@ -643,8 +647,11 @@ function formatForceValue(type, r, mode = "combined") {
 function bindForceStoryboard() {
   const sliders = Array.from(document.querySelectorAll("[data-force-slider]"));
   const refresh = (step = currentState.force_reveal_step || 0) => {
+    const numericStep = Math.max(0, Math.min(Number(step), 3));
+    const story = document.querySelector(".force-story:not(.deformation-story)");
+    if (story) story.dataset.revealStep = String(numericStep);
     const heading = document.querySelector(".force-story:not(.deformation-story) h1");
-    if (heading) heading.innerHTML = forceStepHeadings[Math.max(0, Math.min(Number(step), 3))];
+    if (heading) heading.innerHTML = forceStepHeadings[numericStep];
     sliders.forEach((slider) => { slider.value = String(x1); });
     document.querySelectorAll("[data-force-value]").forEach((value) => { value.textContent = `${x1.toFixed(3)} ql`; });
     document.querySelectorAll("[data-force-live-value]").forEach((value) => {
@@ -655,6 +662,18 @@ function bindForceStoryboard() {
     document.querySelectorAll("[data-force-readouts]").forEach((readouts) => { readouts.innerHTML = labReadouts(false); });
     document.querySelectorAll("[data-force-curve]").forEach((canvas) => drawForceCurve(canvas, x1, canvas.dataset.forceCurve, canvas.dataset.forceSystem));
     applyForceLabelLayout(x1);
+    story?.querySelectorAll('[data-element-slot="originalShearBg"], [data-element-slot="basicShearBg"]').forEach((element) => {
+      element.hidden = true;
+    });
+    ["originalMomentBg", "basicMomentBg"].forEach((slot) => {
+      const element = story?.querySelector(`[data-element-slot="${slot}"]`);
+      const layout = forceLayout.elements[slot];
+      if (element && layout) element.style.left = `${(numericStep === 3 ? forceLayout.elements.originalShearBg.x : layout.x) / FORCE_CANVAS.width * 100}%`;
+    });
+    const transitionArrow = story?.querySelector("[data-force-transition-arrow]");
+    if (transitionArrow) transitionArrow.hidden = numericStep !== 2;
+    const compareDecorations = story?.querySelectorAll("[data-force-compare-decoration]") || [];
+    compareDecorations.forEach((element) => { element.hidden = numericStep !== 3; });
   };
   forceStoryboardRefresh = refresh;
   sliders.forEach((slider) => {
@@ -670,10 +689,23 @@ function bindForceStoryboard() {
 function bindDeformationStoryboard() {
   const slider = document.querySelector('[data-force-channel="basic"]');
   const card = slider.closest('.force-control');
+  const aiCard = document.querySelector('[data-ai-deformation-card]');
+  const aiButton = document.querySelector('[data-ai-deformation-button]');
+  const aiStatus = document.querySelector('[data-ai-deformation-status]');
   let keyboardInput = false;
   slider.addEventListener('keydown', () => { keyboardInput = true; });
   slider.addEventListener('pointerdown', () => { keyboardInput = false; });
   const refresh = (step = Number(currentState?.deformation_reveal_step || 0)) => {
+    if (step < 4) {
+      aiDeformationEnabled = false;
+      aiDeformationProgress = null;
+      if (aiDeformationAnimationFrame) cancelAnimationFrame(aiDeformationAnimationFrame);
+      if (aiDeformationTimer) clearTimeout(aiDeformationTimer);
+      aiDeformationAnimationFrame = null;
+      aiDeformationTimer = null;
+      if (aiButton) delete aiButton.dataset.computing;
+      aiCard?.removeAttribute('aria-busy');
+    }
     const uniform = step === 1 || step === 2;
     const mode = uniform ? 'uniform' : step === 3 ? 'fyb' : 'combined';
     deformationBasicX1 = uniform ? 0 : x1;
@@ -697,9 +729,21 @@ function bindDeformationStoryboard() {
       label.dataset.forceMode = current.mode;
     });
     drawDecompositionStructure(document.querySelector('[data-deformation-load]'), mode, deformationBasicX1);
+    const bottom = document.querySelector('[data-deformation-load]');
     const top = document.querySelector('[data-deformation-load-top]');
-    top.hidden = step < 4;
+    const aiComputing = step === 4 && aiDeformationProgress !== null;
+    const showAiCurves = step >= 5 || (step === 4 && aiDeformationEnabled);
+    if (bottom) bottom.hidden = step === 0 || (step === 4 && !showAiCurves && !aiComputing);
+    top.hidden = step < 4 || (step === 4 && !showAiCurves && !aiComputing);
     if (step >= 4) drawDecompositionStructure(top, 'combined', THEORETICAL_FYB_RATIO);
+    if (aiCard) aiCard.hidden = step !== 4;
+    if (aiButton && step === 4 && !aiButton.dataset.computing) {
+      aiButton.disabled = aiDeformationEnabled;
+      aiButton.textContent = aiDeformationEnabled ? 'AI 计算完成' : '启动 AI 辅助计算';
+      aiStatus.textContent = aiDeformationEnabled
+        ? '26/26 个采样点 · 变形曲线已生成'
+        : '逐点图乘 · 计算 26 个采样点位移';
+    }
     applyDeformationStepLayout(step);
     lastDeformationRevealStep = step;
   };
@@ -716,6 +760,42 @@ function bindDeformationStoryboard() {
     slider.value = String(x1);
     refresh();
   }));
+  aiButton?.addEventListener('click', () => {
+    if (aiDeformationEnabled || aiButton.dataset.computing) return;
+    aiButton.dataset.computing = 'true';
+    aiButton.disabled = true;
+    aiButton.textContent = 'AI 正在逐点计算…';
+    aiStatus.textContent = '1/26 个采样点 · AI逐点图乘中';
+    aiCard.setAttribute('aria-busy', 'true');
+    aiDeformationProgress = 0;
+    refresh(4);
+    const startedAt = performance.now();
+    const duration = 2000;
+    const animate = (now) => {
+      if (currentState?.stage !== 3 || Number(currentState.deformation_reveal_step || 0) !== 4) return;
+      aiDeformationProgress = Math.min(1, (now - startedAt) / duration);
+      const completedPoints = Math.min(26, Math.floor(aiDeformationProgress * 25) + 1);
+      aiStatus.textContent = `${completedPoints}/26 个采样点 · AI逐点图乘中`;
+      drawDecompositionStructure(document.querySelector('[data-deformation-load]'), 'combined', deformationBasicX1);
+      drawDecompositionStructure(document.querySelector('[data-deformation-load-top]'), 'combined', THEORETICAL_FYB_RATIO);
+      if (aiDeformationProgress < 1) {
+        aiDeformationAnimationFrame = requestAnimationFrame(animate);
+        return;
+      }
+      aiDeformationAnimationFrame = null;
+      aiDeformationTimer = setTimeout(() => {
+        aiDeformationTimer = null;
+        delete aiButton.dataset.computing;
+        aiCard.removeAttribute('aria-busy');
+        if (currentState?.stage !== 3 || Number(currentState.deformation_reveal_step || 0) !== 4) return;
+        aiDeformationProgress = null;
+        aiDeformationEnabled = true;
+        refresh(4);
+      }, 300);
+    };
+    if (aiDeformationTimer) clearTimeout(aiDeformationTimer);
+    aiDeformationAnimationFrame = requestAnimationFrame(animate);
+  });
   refresh();
 }
 
@@ -832,7 +912,7 @@ function updateDeformationReveal(state) {
   story.querySelector('[data-deformation-load]').hidden = step === 0;
   story.querySelector('[data-deformation-load-top]').hidden = step < 4;
   story.querySelector('[data-deformation-divider]').hidden = false;
-  story.querySelectorAll('[data-structure-caption]').forEach(label => { label.hidden = ![0, 4, 5].includes(step); });
+  story.querySelectorAll('[data-structure-caption]').forEach(label => { label.hidden = false; });
   applyForceLayout();
   applyDeformationCompareLayout();
   if (forceStoryboardRefresh) forceStoryboardRefresh(step);
@@ -844,6 +924,10 @@ function renderForce() {
     <div class="force-composition">
       <div class="force-free-canvas" aria-label="11元素自由排版画布">
         ${Object.keys(FORCE_ELEMENT_META).map(forceElementHtml).join("")}
+        <div class="force-transition-arrow" data-force-transition-arrow hidden aria-label="由超静定结构指向静定结构"></div>
+        <div class="deformation-row-divider" data-force-compare-decoration hidden aria-hidden="true"></div>
+        <div class="structure-caption top-caption" data-force-compare-decoration hidden>未知的超静定结构</div>
+        <div class="structure-caption bottom-caption" data-force-compare-decoration hidden>已知的静定结构</div>
       </div>
       <div class="force-controls">
         <aside class="control-card force-control" data-reveal="3" hidden><div class="range-row"><input data-force-slider type="range" min="0" max="1" step="0.005" value="${x1}" aria-label="原结构FyB滑块"/><strong data-force-value></strong></div><div data-force-readouts></div><p class="hint">拖动同一个 F<sub>yB</sub>，上下两组内力图同步更新。</p></aside>
@@ -867,7 +951,7 @@ function renderDeformation() {
         ${slots.map(forceElementHtml).join("")}<div class="structure-caption top-caption" data-structure-caption>未知的超静定结构</div><div class="structure-caption bottom-caption" data-structure-caption>已知的静定结构</div>
       </div>
       <div class="force-controls">
-        <aside class="control-card force-control"><div class="range-row"><input data-force-slider data-force-channel="basic" type="range" min="0" max="1" step="0.005" value="0" aria-label="切开链杆后FyB滑块"/><strong data-force-value></strong></div><div class="special-candidates" data-special-candidates hidden><button class="secondary" data-special-candidate="0">FyB＝0</button><button class="secondary" data-special-candidate="0.25">FyB＝ql/4</button><button class="secondary" data-special-candidate="0.5">FyB＝ql/2</button></div><div data-force-readouts></div><p class="hint">上下滑块同步，两组内力图同步变化。</p></aside>
+        <aside class="control-card force-control"><section class="ai-deformation-card" data-ai-deformation-card hidden><div class="ai-deformation-heading"><span>AI</span><strong>辅助生成整梁变形</strong></div><button type="button" class="primary ai-deformation-button" data-ai-deformation-button>启动 AI 辅助计算</button><small data-ai-deformation-status>逐点图乘 · 计算 26 个采样点位移</small></section><div class="range-row"><input data-force-slider data-force-channel="basic" type="range" min="0" max="1" step="0.005" value="0" aria-label="切开链杆后FyB滑块"/><strong data-force-value></strong></div><div class="special-candidates" data-special-candidates hidden><button class="secondary" data-special-candidate="0">FyB＝0</button><button class="secondary" data-special-candidate="0.25">FyB＝ql/4</button><button class="secondary" data-special-candidate="0.5">FyB＝ql/2</button></div><div data-force-readouts></div><p class="hint">上下滑块同步，两组内力图同步变化。</p></aside>
       </div>
     </div>
   </section>`;
@@ -1077,16 +1161,54 @@ function drawDecompositionStructure(canvas, mode, r) {
     canvas.style.bottom = "auto";
     canvas.style.height = `${requiredCanvasHeight / baseCanvasHeight * 100}%`;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const isAiScan = customStep === 4 && aiDeformationProgress !== null;
+    const finalPointIndex = isAiScan
+      ? Math.max(0, Math.min(100, Math.floor(aiDeformationProgress * 100)))
+      : 100;
+    if (isAiScan) {
+      ctx.save();
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([9, 6]);
+      for (let index = 0; index <= finalPointIndex; index += 4) {
+        const point = points[index];
+        const beamY = curveBaseline + topPadding;
+        const curveY = point.y + topPadding;
+        const position = index / 100;
+        const blend = Math.sin(Math.PI * position);
+        const red = Math.round(215 + (47 - 215) * blend);
+        const green = Math.round(99 + (109 - 99) * blend);
+        const blue = Math.round(34 + (176 - 34) * blend);
+        ctx.strokeStyle = `rgba(${red}, ${green}, ${blue}, .7)`;
+        ctx.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+        ctx.beginPath();
+        ctx.moveTo(point.x, beamY);
+        ctx.lineTo(point.x, curveY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(point.x, beamY, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     ctx.strokeStyle = color;
     ctx.lineCap = "round";
     ctx.lineWidth = curveLineWidth;
     ctx.setLineDash(curveDash(customConfig.styles.deformationLineStyle));
     ctx.beginPath();
-    points.forEach((point, index) => {
+    points.slice(0, finalPointIndex + 1).forEach((point, index) => {
       const y = point.y + topPadding;
       index ? ctx.lineTo(point.x, y) : ctx.moveTo(point.x, y);
     });
     ctx.stroke();
+    if (isAiScan) {
+      ctx.fillStyle = color;
+      for (let index = 0; index <= finalPointIndex; index += 4) {
+        const point = points[index];
+        ctx.beginPath();
+        ctx.arc(point.x, point.y + topPadding, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     ctx.setLineDash([]);
     return;
   }
