@@ -405,10 +405,13 @@ th { color: var(--muted); font-size: 12px; }
 .structure-caption { position: absolute; left: 3%; color: var(--blue); font-weight: 800; font-size: clamp(14px, 1.5vw, 24px); z-index: 6; }
 .top-caption { top: 2%; }
 .bottom-caption { top: 46%; }
+.force-story:not(.deformation-story) .force-stage-caption { left: 31%; }
+.force-story:not(.deformation-story) .force-stage-caption.top-caption { left: 25.5%; top: 18.5%; }
+.force-story:not(.deformation-story) .force-stage-caption.bottom-caption { top: 59%; }
 .force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].deformation-row-divider { left: 1.5%; right: 30%; }
-.force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].structure-caption { left: 15%; }
-.force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].top-caption { top: 34%; }
-.force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].bottom-caption { top: 54.2%; }
+.force-story:not(.deformation-story)[data-reveal-step="3"] .force-stage-caption { left: 15%; }
+.force-story:not(.deformation-story)[data-reveal-step="3"] .force-stage-caption.top-caption { top: 34%; }
+.force-story:not(.deformation-story)[data-reveal-step="3"] .force-stage-caption.bottom-caption { top: 54.2%; }
 .deformation-story[data-reveal-step="4"] .deformation-formula-label, .deformation-story[data-reveal-step="5"] .deformation-formula-label { left: 50% !important; top: 88% !important; transform: translateX(-50%) !important; font-size: clamp(14px, 1.5vw, 24px); }
 
 .force-control .displacement-readout strong { font-size: 23px; font-weight: 900; }
@@ -417,12 +420,13 @@ th { color: var(--muted); font-size: 12px; }
 .force-reveal-grid { grid-template-columns: repeat(5, 32px); }
 
 @media (max-width: 780px) {
-  .force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].structure-caption { left: 6%; font-size: 12px; white-space: nowrap; }
-  .force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].top-caption { top: 36%; }
+  .force-story:not(.deformation-story) .force-stage-caption { font-size: 12px; white-space: nowrap; }
+  .force-story:not(.deformation-story)[data-reveal-step="3"] .force-stage-caption { left: 6%; }
+  .force-story:not(.deformation-story)[data-reveal-step="3"] .force-stage-caption.top-caption { top: 36%; }
 }
 
 @media (max-width: 350px) {
-  .force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].top-caption { left: 3%; }
+  .force-story:not(.deformation-story)[data-reveal-step="3"] .force-stage-caption.top-caption { left: 3%; }
   .force-story:not(.deformation-story)[data-reveal-step="3"] [data-force-compare-decoration].deformation-row-divider { right: 34%; }
 }
 
