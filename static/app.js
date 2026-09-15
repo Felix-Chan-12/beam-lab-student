@@ -967,7 +967,7 @@ function renderDeformation() {
   const originalStructure = document.querySelector('[data-element-slot="originalStructure"]');
   const topCanvasHeight = Math.round(1000 / FORCE_ELEMENT_META.originalStructure.ratio);
   originalStructure.insertAdjacentHTML("afterbegin", `<canvas class="deformation-load-canvas" data-deformation-load-top data-deformation-system="top" width="1000" height="${topCanvasHeight}" hidden></canvas>`);
-  originalStructure.insertAdjacentHTML("beforeend", '<div class="deformation-zero-label" data-deformation-zero-label hidden><span aria-hidden="true"></span>Δ<sub>B</sub> = 0</div>');
+  originalStructure.insertAdjacentHTML("beforeend", '<div class="deformation-zero-label" data-deformation-zero-label hidden>Δ<sub>B</sub> = 0</div>');
   document.querySelector(".force-free-canvas").insertAdjacentHTML("beforeend", '<div class="deformation-formula-label" data-deformation-formula hidden></div>');
   bindDeformationStoryboard();
   updateDeformationReveal(currentState);
