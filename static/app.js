@@ -730,12 +730,17 @@ function bindDeformationStoryboard() {
     });
     drawDecompositionStructure(document.querySelector('[data-deformation-load]'), mode, deformationBasicX1);
     const bottom = document.querySelector('[data-deformation-load]');
+    const dimension = document.querySelector('[data-deformation-dimension]');
     const top = document.querySelector('[data-deformation-load-top]');
     const aiComputing = step === 4 && aiDeformationProgress !== null;
     const showAiCurves = step >= 5 || (step === 4 && aiDeformationEnabled);
     if (bottom) bottom.hidden = step === 0 || (step === 4 && !showAiCurves && !aiComputing);
-    top.hidden = step < 4 || (step === 4 && !showAiCurves && !aiComputing);
-    if (step >= 4) drawDecompositionStructure(top, 'combined', THEORETICAL_FYB_RATIO);
+    if (dimension) dimension.hidden = bottom?.hidden ?? true;
+    top.hidden = true;
+    const trendLabel = document.querySelector('[data-deformation-trend-label]');
+    if (trendLabel) trendLabel.hidden = step < 1 || step > 3;
+    const zeroLabel = document.querySelector('[data-deformation-zero-label]');
+    if (zeroLabel) zeroLabel.hidden = step !== 5;
     if (aiCard) aiCard.hidden = step !== 4;
     if (aiButton && step === 4 && !aiButton.dataset.computing) {
       aiButton.disabled = aiDeformationEnabled;
@@ -777,7 +782,6 @@ function bindDeformationStoryboard() {
       const completedPoints = Math.min(26, Math.floor(aiDeformationProgress * 25) + 1);
       aiStatus.textContent = `${completedPoints}/26 个采样点 · AI逐点图乘中`;
       drawDecompositionStructure(document.querySelector('[data-deformation-load]'), 'combined', deformationBasicX1);
-      drawDecompositionStructure(document.querySelector('[data-deformation-load-top]'), 'combined', THEORETICAL_FYB_RATIO);
       if (aiDeformationProgress < 1) {
         aiDeformationAnimationFrame = requestAnimationFrame(animate);
         return;
@@ -957,10 +961,13 @@ function renderDeformation() {
   </section>`;
   const basicStructure = document.querySelector('[data-element-slot="basicStructure"]');
   const canvasHeight = Math.round(1000 / FORCE_ELEMENT_META.basicStructure.ratio);
+  basicStructure.insertAdjacentHTML("afterbegin", `<canvas class="deformation-dimension-canvas" data-deformation-dimension width="1000" height="${canvasHeight}" hidden></canvas>`);
   basicStructure.insertAdjacentHTML("afterbegin", `<canvas class="deformation-load-canvas" data-deformation-load data-deformation-system="bottom" width="1000" height="${canvasHeight}" hidden></canvas>`);
+  basicStructure.insertAdjacentHTML("beforeend", '<div class="deformation-trend-label" data-deformation-trend-label hidden>变形趋势示意</div>');
   const originalStructure = document.querySelector('[data-element-slot="originalStructure"]');
   const topCanvasHeight = Math.round(1000 / FORCE_ELEMENT_META.originalStructure.ratio);
   originalStructure.insertAdjacentHTML("afterbegin", `<canvas class="deformation-load-canvas" data-deformation-load-top data-deformation-system="top" width="1000" height="${topCanvasHeight}" hidden></canvas>`);
+  originalStructure.insertAdjacentHTML("beforeend", '<div class="deformation-zero-label" data-deformation-zero-label hidden><span aria-hidden="true"></span>Δ<sub>B</sub> = 0</div>');
   document.querySelector(".force-free-canvas").insertAdjacentHTML("beforeend", '<div class="deformation-formula-label" data-deformation-formula hidden></div>');
   bindDeformationStoryboard();
   updateDeformationReveal(currentState);
@@ -1128,7 +1135,10 @@ function drawDecompositionStructure(canvas, mode, r) {
     const curveBaseline = isTopCurve ? numeric.topDeformationBaseline : numeric.deformationBaseline;
     const curveScale = isTopCurve ? numeric.topDeformationScale : numeric.deformationScale;
     const curveLineWidth = isTopCurve ? numeric.topDeformationLineWidth : numeric.deformationLineWidth;
-    const color = isTopCurve
+    const isTrendPreview = customStep >= 1 && customStep <= 3 && !isTopCurve;
+    const color = isTrendPreview
+      ? "#aeb5bd"
+      : isTopCurve
       ? customConfig.styles.topColor
       : customConfig.styles.bottomColor;
     const baseCanvasHeight = Number(canvas.dataset.baseCanvasHeight || canvas.height);
@@ -1161,6 +1171,18 @@ function drawDecompositionStructure(canvas, mode, r) {
     canvas.style.bottom = "auto";
     canvas.style.height = `${requiredCanvasHeight / baseCanvasHeight * 100}%`;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dimensionCanvas = !isTopCurve ? document.querySelector('[data-deformation-dimension]') : null;
+    const dimensionCtx = dimensionCanvas?.getContext("2d");
+    if (dimensionCanvas && dimensionCtx) {
+      if (dimensionCanvas.width !== 1000 || dimensionCanvas.height !== requiredCanvasHeight) {
+        dimensionCanvas.width = 1000;
+        dimensionCanvas.height = requiredCanvasHeight;
+      }
+      dimensionCanvas.style.top = canvas.style.top;
+      dimensionCanvas.style.bottom = "auto";
+      dimensionCanvas.style.height = canvas.style.height;
+      dimensionCtx.clearRect(0, 0, dimensionCanvas.width, dimensionCanvas.height);
+    }
     const isAiScan = customStep === 4 && aiDeformationProgress !== null;
     const finalPointIndex = isAiScan
       ? Math.max(0, Math.min(100, Math.floor(aiDeformationProgress * 100)))
@@ -1191,15 +1213,65 @@ function drawDecompositionStructure(canvas, mode, r) {
       ctx.restore();
     }
     ctx.strokeStyle = color;
-    ctx.lineCap = "round";
-    ctx.lineWidth = curveLineWidth;
-    ctx.setLineDash(curveDash(customConfig.styles.deformationLineStyle));
+    ctx.lineCap = isTrendPreview ? "butt" : "round";
+    ctx.lineWidth = isTrendPreview ? 3 : curveLineWidth;
+    ctx.setLineDash(isTrendPreview ? [16, 12] : curveDash(customConfig.styles.deformationLineStyle));
     ctx.beginPath();
     points.slice(0, finalPointIndex + 1).forEach((point, index) => {
       const y = point.y + topPadding;
       index ? ctx.lineTo(point.x, y) : ctx.moveTo(point.x, y);
     });
     ctx.stroke();
+    const showEndpointAnnotation = isTrendPreview
+      || (customStep === 4 && aiDeformationEnabled && !isAiScan)
+      || customStep === 5;
+    if (showEndpointAnnotation) {
+      const endPoint = points[points.length - 1];
+      const beamY = curveBaseline + topPadding;
+      const endY = endPoint.y + topPadding;
+      const dimensionX = customStep >= 4 ? curveXB - 34 : Math.min(980, curveXB + 24);
+      const endpointColor = customStep <= 2
+        ? "#800080"
+        : customStep === 3
+        ? "#20a365"
+        : "#d76322";
+      const arrowCtx = dimensionCtx || ctx;
+      arrowCtx.save();
+      arrowCtx.strokeStyle = "#17221f";
+      arrowCtx.fillStyle = "#17221f";
+      arrowCtx.lineWidth = 3.5;
+      arrowCtx.lineCap = "round";
+      arrowCtx.lineJoin = "round";
+      arrowCtx.setLineDash([]);
+      arrowCtx.beginPath();
+      arrowCtx.moveTo(dimensionX, beamY);
+      arrowCtx.lineTo(dimensionX, endY);
+      arrowCtx.stroke();
+      const direction = Math.sign(endY - beamY) || 1;
+      [[beamY, direction], [endY, -direction]].forEach(([y, arrowDirection]) => {
+        arrowCtx.beginPath();
+        arrowCtx.moveTo(dimensionX - 9, y + 14 * arrowDirection);
+        arrowCtx.lineTo(dimensionX, y);
+        arrowCtx.lineTo(dimensionX + 9, y + 14 * arrowDirection);
+        arrowCtx.stroke();
+      });
+      arrowCtx.restore();
+      ctx.save();
+      ctx.fillStyle = endpointColor;
+      ctx.beginPath();
+      ctx.arc(endPoint.x, endY, 16.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+      const labelY = (beamY + endY) / 2;
+      ctx.fillStyle = "#17221f";
+      ctx.font = "700 52px 'Times New Roman', serif";
+      ctx.fillText("Δ", dimensionX - 142, labelY + 7);
+      ctx.font = "700 32px 'Times New Roman', serif";
+      ctx.fillText("B", dimensionX - 101, labelY + 19);
+      ctx.restore();
+    }
     if (isAiScan) {
       ctx.fillStyle = color;
       for (let index = 0; index <= finalPointIndex; index += 4) {
