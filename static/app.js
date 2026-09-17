@@ -624,6 +624,7 @@ function forceElementHtml(slot) {
     return `<div class="force-free-element force-diagram-element" data-element-slot="${slot}" style="--element-ratio:${ratio}"${reveal}>
       <canvas data-force-curve="${meta.curve}" data-force-system="${meta.system}" width="1000" height="${canvasHeight}"></canvas>
       <img data-force-asset="${slot}" src="${forceAsset(slot)}" alt="${meta.label}"/>
+      ${meta.curve === "moment" ? '<div class="moment-diagram-title">弯矩图</div>' : ""}
       ${liveValue}
     </div>`;
   }
@@ -674,6 +675,10 @@ function bindForceStoryboard() {
     if (transitionArrow) transitionArrow.hidden = numericStep !== 2;
     const compareDecorations = story?.querySelectorAll("[data-force-compare-decoration]") || [];
     compareDecorations.forEach((element) => { element.hidden = numericStep !== 3; });
+    const topCaption = story?.querySelector("[data-force-top-caption]");
+    const bottomCaption = story?.querySelector("[data-force-bottom-caption]");
+    if (topCaption) topCaption.hidden = false;
+    if (bottomCaption) bottomCaption.hidden = numericStep < 2;
   };
   forceStoryboardRefresh = refresh;
   sliders.forEach((slider) => {
@@ -930,8 +935,8 @@ function renderForce() {
         ${Object.keys(FORCE_ELEMENT_META).map(forceElementHtml).join("")}
         <div class="force-transition-arrow" data-force-transition-arrow hidden aria-label="由超静定结构指向静定结构"></div>
         <div class="deformation-row-divider" data-force-compare-decoration hidden aria-hidden="true"></div>
-        <div class="structure-caption top-caption" data-force-compare-decoration hidden>未知的超静定结构</div>
-        <div class="structure-caption bottom-caption" data-force-compare-decoration hidden>已知的静定结构</div>
+        <div class="structure-caption top-caption force-stage-caption" data-force-top-caption hidden>未知的超静定结构</div>
+        <div class="structure-caption bottom-caption force-stage-caption" data-force-bottom-caption hidden>已知的静定结构</div>
       </div>
       <div class="force-controls">
         <aside class="control-card force-control" data-reveal="3" hidden><div class="range-row"><input data-force-slider type="range" min="0" max="1" step="0.005" value="${x1}" aria-label="原结构FyB滑块"/><strong data-force-value></strong></div><div data-force-readouts></div><p class="hint">拖动同一个 F<sub>yB</sub>，上下两组内力图同步更新。</p></aside>
