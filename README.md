@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./readme-logo.svg" alt="BEAM LAB · E—A 数智判验实验场>
+  <img src="./readme-logo.svg" alt="BEAM LAB · E—A 数智判验实验场" width="330">
 </p>
 
 <p align="center">
