@@ -1,3 +1,5 @@
+if (window.BEAM_COMPAT_BOOT_STARTED) window.BEAM_COMPAT_BOOT_STARTED();
+
 const offlineRuntime = window.BEAM_OFFLINE || null;
 const offlineMode = Boolean(offlineRuntime);
 const offlineConfig = window.BEAM_OFFLINE_CONFIG || {};
