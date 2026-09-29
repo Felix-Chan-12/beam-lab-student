@@ -21,6 +21,7 @@ const layoutStep = Number(searchParams.get("layout_step") || 0);
 const layoutToolsEnabled = role === "teacher" && searchParams.get("edit") === "1";
 document.body.classList.add(`${role}-page`);
 if (isPreview) document.body.classList.add("preview-page");
+if (isPreview && window.parent !== window) document.body.classList.add("embedded-preview");
 if (layoutMode) document.body.classList.add("layout-mode");
 if (isSelfGuidedStudent) document.body.classList.add("self-guided-page");
 const app = document.querySelector("#app");
@@ -31,11 +32,11 @@ const clientId = localStorage.getItem("beam-client-id") || crypto.randomUUID?.()
 localStorage.setItem("beam-client-id", clientId);
 brandLink.href = location.href;
 
-const stageLabels = ["等待", "先行研判 E", "受力数验 A₁", "协调释理 A₂"];
+const stageLabels = ["等待", "初步判断 E", "验证分析 A1", "验证分析 A2"];
 const forceStepHeadings = [
   "先看原结构的受力",
   "切开竖向链杆，用力代替它的作用",
-  "写出静定结构的平衡方程",
+  "用力保留链杆的受力作用",
   "同一个 <i>F</i><sub>yB</sub>，比较切开前后的内力图",
 ];
 const DEMO_VOTE_FEEDBACK = {
@@ -47,6 +48,19 @@ const DEMO_VOTE_FEEDBACK = {
     "目前只能确认它们满足平衡，还需要更多证据才能判断。",
   ],
 };
+// E 投票反馈的人数（A / B / C 各几人，「N 人完成判断」= 三者之和）：可以在版面调试里改，存在 layout-overrides.js 的 votes 里；
+// 没改过就用上面的演示数据。只在离线版（本副本、学生页）生效。
+window.BEAM_DEMO_VOTES = { ...DEMO_VOTE_FEEDBACK.counts };
+function customVoteCounts() {
+  const raw = window.BEAM_VOTE_COUNTS !== undefined ? window.BEAM_VOTE_COUNTS : window.BEAM_LAYOUT_OVERRIDES?.votes;
+  if (!offlineMode || !raw || typeof raw !== "object") return null;
+  const counts = {};
+  for (const key of Object.keys(DEMO_VOTE_FEEDBACK.counts)) {
+    const n = Math.round(Number(raw[key]));
+    counts[key] = Number.isFinite(n) && n >= 0 ? n : DEMO_VOTE_FEEDBACK.counts[key];
+  }
+  return counts;
+}
 let lastStage = -1;
 let lastVoteFeedback = null;
 let currentState = null;
@@ -54,7 +68,6 @@ let config = null;
 let x1 = 0.25;
 let deformationBasicX1 = 0;
 let lastDeformationRevealStep = 0;
-let timerHandle = null;
 let forceStoryboardRefresh = null;
 let deformationLayout = null;
 let previewSeconds = 0;
@@ -244,7 +257,7 @@ function applyForceLabelLayout(context = {}) {
       const isDecomposedFyB = slot === "basicFyB" && current?.mode === "fyb";
       label.style.left = `${isDecomposedFyB ? 42 : layout.x}%`;
       label.style.top = `${isDecomposedFyB ? 69 : layout.y}%`;
-      label.style.transform = `scale(${layout.scale})`;
+      label.style.transform = `scale(${layoutMode ? layout.scale : 1})`;
       return;
     }
     const parentMeta = FORCE_ELEMENT_META[labelMeta.parent];
@@ -266,7 +279,7 @@ function applyForceLabelLayout(context = {}) {
     const curveYPercent = curveY / canvasHeight * 100;
     const curveIsAboveBaseline = screenDelta <= 0;
     label.style.top = `${curveYPercent + (curveIsAboveBaseline ? -layout.y : layout.y)}%`;
-    label.style.transform = `${curveIsAboveBaseline ? "translateY(-100%)" : "translateY(0)"} scale(${layout.scale})`;
+    label.style.transform = `${curveIsAboveBaseline ? "translateY(-100%)" : "translateY(0)"} scale(${layoutMode ? layout.scale : 1})`;
   });
 }
 
@@ -328,8 +341,8 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove("show"), 1500);
 }
 
-const OFFLINE_CLASSROOM_STATE_KEY = "beam-offline-classroom-state-v2-sep13";
-const OFFLINE_STUDENT_STATE_KEY = "beam-offline-student-state-v2-sep13";
+const OFFLINE_CLASSROOM_STATE_KEY = "beam-offline-classroom-state-v5-sep27";
+const OFFLINE_STUDENT_STATE_KEY = "beam-offline-student-state-v5-sep27";
 
 function offlineStateKey() {
   return role === "teacher" || isPreview ? OFFLINE_CLASSROOM_STATE_KEY : OFFLINE_STUDENT_STATE_KEY;
@@ -453,16 +466,11 @@ async function loadState() {
   return response.json();
 }
 
-function steps(stage) {
-  return `<div class="steps">${[1, 2, 3].map((number) => {
-    const cls = number < stage ? "done" : number === stage ? "active" : "";
-    return `<div class="step ${cls}">0${number} · ${stageLabels[number]}</div>`;
-  }).join("")}</div>`;
-}
+function steps(stage) { return ""; }
 
 function studentShell(title, eyebrow, content, aside = "") {
   return `${steps(currentState.stage)}<section class="hero"><article class="panel">
-    <p class="eyebrow">${eyebrow}</p><h1>${title}</h1>${content}
+    <h1>${title}</h1>${content}
   </article><aside class="panel">${aside}</aside></section>`;
 }
 
@@ -476,16 +484,14 @@ function renderVote() {
     renderVoteFeedback();
     return;
   }
-  app.innerHTML = studentShell("同一个结构，会有很多组正确解吗？", "E · 先行研判", `
-    <p class="question">平衡方程有无穷多组解。请先判断：它们是否都是原结构的正确解？</p>
-    <div class="ai-quote"><strong>小智：</strong>F<sub>yB</sub> 可以任意取值，而且每一个值都能得到一组满足平衡的反力。所以，超静定结构本来就有很多组正确解。</div>
+  app.innerHTML = studentShell("三组解都满足平衡，它们是这根梁真实的受力吗？", "", `
     <div class="options">
-      <button class="option" data-vote="agree"><strong>同意小智</strong>两个平衡方程、三个未知量，当然可以有很多组解。</button>
-      <button class="option" data-vote="doubt"><strong>感觉怪怪的</strong>内力如果想大就大、想小就小，构件截面还怎么设计？</button>
-      <button class="option" data-vote="unsure"><strong>暂时无法判断</strong>我需要更多证据。</button>
+      <button class="option" data-vote="agree" aria-pressed="false"><strong>A</strong><span>三组都是</span></button>
+      <button class="option" data-vote="doubt" aria-pressed="false"><strong>B</strong><span>只有其中一组是</span></button>
+      <button class="option" data-vote="unsure" aria-pressed="false"><strong>C</strong><span>不一定在这三组里</span></button>
     </div>
-    <div class="vote-submit-row"><input id="voteComment" type="text" maxlength="80" placeholder="补充选项之外的想法（选填）"/><button class="primary" id="submitVote" disabled>提交判断</button></div>
-    <p class="vote-status" id="voteStatus"></p>`, `<h3>先判，再验</h3><p class="lead">这里没有“正确选项”提示。你的判断会进入教师端汇总，但不会显示姓名。</p>
+    <p class="vote-status" id="voteStatus"></p>
+    <div class="vote-submit-row"><input id="voteComment" type="text" maxlength="80" aria-label="补充你的想法（选填）" placeholder="补充你的想法（选填）"/><button class="primary" id="submitVote" disabled>提交</button></div>`, `<h2>平衡条件与三组候选解</h2>
       <div class="formula equilibrium-system">
         <div>∑ F<sub>x</sub> = 0　 <span class="eq-blue">F<sub>xA</sub></span> = 0</div>
         <div>∑ F<sub>y</sub> = 0　 −q · l + <span class="eq-blue">F<sub>yA</sub></span> + <span class="eq-red">F<sub>yB</sub></span> = 0</div>
@@ -508,6 +514,14 @@ function renderVote() {
           <span><span class="eq-blue">F<sub>yA</sub></span> = <span class="fraction"><span>q · l</span><span>2</span></span></span>
           <span><span class="eq-blue">M<sub>A</sub></span> = 0</span>
         </div>
+      </div>
+      <div class="symbol-notes" aria-label="符号说明">
+        <p>q：均布荷载集度　l：梁长</p>
+        <p>F<sub>xA</sub>：A点水平（x向）支反力</p>
+        <p>F<sub>yA</sub>、F<sub>yB</sub>：A、B点竖向（y向）支反力</p>
+        <p>M<sub>A</sub>：A点支座反力矩</p>
+        <p>∑F<sub>x</sub>、∑F<sub>y</sub>：水平（x向）、竖直（y向）各力的代数和</p>
+        <p>∑M：各力对同一取矩点的力矩代数和</p>
       </div>`);
   let selectedVote = null;
   const voteButtons = document.querySelectorAll("[data-vote]");
@@ -542,20 +556,32 @@ function renderVote() {
 }
 
 function voteFeedbackSummaryHtml(state) {
+  const custom = customVoteCounts();
+  const counts = custom || state.vote_counts;
+  const participants = custom ? Object.values(custom).reduce((a, b) => a + b, 0) : state.participants;
   return `<div class="student-feedback-summary">
-    <div class="student-feedback-total"><strong>${state.participants}</strong><span>人完成判断</span></div>
-    <div class="vote-bars student-vote-bars">${voteBars(state.vote_counts)}</div>
+    <div class="student-feedback-total"><strong>${participants}</strong><span>人完成判断</span></div>
+    <div class="vote-bars student-vote-bars">${voteBars(counts)}</div>
   </div>
   <section class="student-feedback-comments"><h3>匿名补充观点</h3>
     ${state.vote_comments.map(comment => `<p>${comment}</p>`).join("")}
   </section>`;
 }
 
+// 版面调试里改了投票人数：投票反馈页马上跟着变。
+window.addEventListener("beam-votes-changed", () => {
+  const summary = document.querySelector(".student-feedback-summary");
+  if (!summary || !currentState) return;
+  const holder = document.createElement("div");
+  holder.innerHTML = voteFeedbackSummaryHtml(currentState);
+  summary.innerHTML = holder.querySelector(".student-feedback-summary").innerHTML;
+});
+
 function renderVoteFeedback() {
   app.innerHTML = studentShell("全班判断已经汇总", "E · 投票反馈", `
-    <p class="question">面对小智的观点，大家形成了三种不同判断。</p>
+    
     ${voteFeedbackSummaryHtml(currentState)}
-    ${isSelfGuidedStudent ? '<div class="button-row"><button class="primary" id="continueFromFeedback">进入02 · 受力数验</button></div>' : ""}`,
+    ${isSelfGuidedStudent ? '<div class="button-row"><button class="primary" id="continueFromFeedback">进入02 · 验证分析 A1</button></div>' : ""}`,
     `<h3>判断之后，还要验证</h3><p class="lead">投票呈现的是当前认识，并不直接公布正确答案。下一步，让内力图提供可以观察、可以比较的证据。</p>`);
   document.querySelector("#continueFromFeedback")?.addEventListener("click", () => setSelfGuidedPosition(2, 0));
 }
@@ -570,7 +596,7 @@ function updateVoteAvailability(state) {
   const submit = document.querySelector("#submitVote");
   if (comment) comment.disabled = !open;
   if (submit) submit.disabled = !open || !selected;
-  status.textContent = open ? "选择进行中，可修改后再次提交" : "本轮选择已结束";
+  status.textContent = open ? "" : "本轮选择已结束";
   status.classList.toggle("closed", !open);
 }
 
@@ -852,7 +878,7 @@ function applyDeformationStepLayout(step) {
     label.style.left = `${position.x}%`;
     if (!configSlot.endsWith("MA")) {
       label.style.top = `${position.y}%`;
-      label.style.transform = `scale(${position.scale})`;
+      label.style.transform = `scale(${layoutMode ? position.scale : 1})`;
       return;
     }
     const isTop = configSlot.startsWith("top");
@@ -869,7 +895,7 @@ function applyDeformationStepLayout(step) {
     const curveYPercent = (baseline + screenDelta) / canvasHeight * 100;
     const curveIsAbove = screenDelta <= 0;
     label.style.top = `${curveYPercent + (curveIsAbove ? -position.y : position.y)}%`;
-    label.style.transform = `${curveIsAbove ? "translateY(-100%)" : "translateY(0)"} scale(${position.scale})`;
+    label.style.transform = `${curveIsAbove ? "translateY(-100%)" : "translateY(0)"} scale(${layoutMode ? position.scale : 1})`;
   });
   const formula = document.querySelector("[data-deformation-formula]");
   if (formula) {
@@ -879,7 +905,7 @@ function applyDeformationStepLayout(step) {
       formula.style.left = `${stepConfig.formula.x / FORCE_CANVAS.width * 100}%`;
       formula.style.top = `${stepConfig.formula.y / FORCE_CANVAS.height * 100}%`;
       formula.style.color = stepConfig.formula.color;
-      formula.style.transform = `scale(${stepConfig.formula.scale})`;
+      formula.style.transform = `scale(${layoutMode ? stepConfig.formula.scale : 1})`;
     }
   }
 }
@@ -931,7 +957,7 @@ function updateDeformationReveal(state) {
 }
 
 function renderForce() {
-  app.innerHTML = `${steps(2)}<section class="panel force-story"><p class="eyebrow">A₁ · 受力数验</p><h1>${forceStepHeadings[0]}</h1>
+  app.innerHTML = `${steps(2)}<section class="panel force-story"><h1>${forceStepHeadings[0]}</h1>
     <div class="force-composition">
       <div class="force-free-canvas" aria-label="11元素自由排版画布">
         ${Object.keys(FORCE_ELEMENT_META).map(forceElementHtml).join("")}
@@ -955,14 +981,14 @@ function renderDeformation() {
   deformationBasicX1 = 0;
   lastDeformationRevealStep = 0;
   const slots = ["originalStructure", "originalMomentBg", "originalShearBg", "basicStructure", "basicMomentBg", "basicShearBg"];
-  app.innerHTML = `${steps(3)}<section class="panel force-story deformation-story" data-reveal-step="0"><p class="eyebrow">A₂ · 协调释理</p><h1></h1>
+  app.innerHTML = `${steps(3)}<section class="panel force-story deformation-story" data-reveal-step="0"><h1></h1>
     <div class="force-composition deformation-composition">
       <div class="force-free-canvas" aria-label="切开竖向链杆前后的受力对照">
         <div class="deformation-row-divider" data-deformation-divider hidden aria-hidden="true"></div>
         ${slots.map(forceElementHtml).join("")}<div class="structure-caption top-caption" data-structure-caption>未知的超静定结构</div><div class="structure-caption bottom-caption" data-structure-caption>已知的静定结构</div>
       </div>
       <div class="force-controls">
-        <aside class="control-card force-control"><section class="ai-deformation-card" data-ai-deformation-card hidden><div class="ai-deformation-heading"><span>AI</span><strong>辅助生成整梁变形</strong></div><button type="button" class="primary ai-deformation-button" data-ai-deformation-button>启动 AI 辅助计算</button><small data-ai-deformation-status>逐点图乘 · 计算 26 个采样点位移</small></section><div class="range-row"><input data-force-slider data-force-channel="basic" type="range" min="0" max="1" step="0.005" value="0" aria-label="切开链杆后FyB滑块"/><strong data-force-value></strong></div><div class="special-candidates" data-special-candidates hidden><button class="secondary" data-special-candidate="0">FyB＝0</button><button class="secondary" data-special-candidate="0.25">FyB＝ql/4</button><button class="secondary" data-special-candidate="0.5">FyB＝ql/2</button></div><div data-force-readouts></div><p class="hint">上下滑块同步，两组内力图同步变化。</p></aside>
+        <aside class="control-card force-control"><section class="ai-deformation-card" data-ai-deformation-card hidden><div class="ai-deformation-heading"><span>AI</span><strong>辅助生成整梁变形</strong></div><button type="button" class="primary ai-deformation-button" data-ai-deformation-button>启动 AI 辅助计算</button><small data-ai-deformation-status>逐点图乘 · 计算 26 个采样点位移</small></section><div class="range-row"><input data-force-slider data-force-channel="basic" type="range" min="0" max="1" step="0.005" value="0" aria-label="切开链杆后FyB滑块"/><strong data-force-value></strong></div><div class="special-candidates" data-special-candidates hidden><button class="secondary" data-special-candidate="0"><i>F</i><sub>yB</sub>＝0</button><button class="secondary" data-special-candidate="0.25"><i>F</i><sub>yB</sub>＝<i>ql</i>/4</button><button class="secondary" data-special-candidate="0.5"><i>F</i><sub>yB</sub>＝<i>ql</i>/2</button></div><div data-force-readouts></div><p class="hint">上下滑块同步，两组内力图同步变化。</p></aside>
       </div>
     </div>
   </section>`;
@@ -1130,6 +1156,8 @@ const deformationComponentImages = {};
 
 function drawDecompositionStructure(canvas, mode, r) {
   if (!canvas) return;
+  const previousLabel = canvas.parentElement.querySelector(".endpoint-label");
+  if (previousLabel) previousLabel.hidden = true;
   const ctx = canvas.getContext("2d");
   const customStep = Number(currentState?.deformation_reveal_step || 0);
   const customConfig = deformationStepConfig(customStep);
@@ -1273,10 +1301,16 @@ function drawDecompositionStructure(canvas, mode, r) {
       ctx.stroke();
       const labelY = (beamY + endY) / 2;
       ctx.fillStyle = "#17221f";
-      ctx.font = "700 52px 'Times New Roman', serif";
-      ctx.fillText("Δ", dimensionX - 142, labelY + 7);
-      ctx.font = "700 32px 'Times New Roman', serif";
-      ctx.fillText("B", dimensionX - 101, labelY + 19);
+      let endpointLabel = canvas.parentElement.querySelector('.endpoint-label');
+      if (!endpointLabel) {
+        endpointLabel = document.createElement('span');
+        endpointLabel.className = 'endpoint-label';
+        endpointLabel.innerHTML = '<i>Δ</i><sub>B</sub>';
+        canvas.parentElement.append(endpointLabel);
+      }
+      endpointLabel.hidden = false;
+      endpointLabel.style.left = `${dimensionX / 10 - 4}%`;
+      endpointLabel.style.top = `${(labelY - topPadding) / baseCanvasHeight * 100}%`;
       ctx.restore();
     }
     if (isAiScan) {
@@ -1806,33 +1840,10 @@ function createLayoutEditor() {
   syncLayoutEditor();
 }
 
-function elapsed(iso) {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime())/1000));
-  return `${String(Math.floor(seconds/60)).padStart(2,"0")}:${String(seconds%60).padStart(2,"0")}`;
-}
-
 function voteBars(counts = {agree:0,doubt:0,unsure:0}) {
-  const labels = {agree:"同意小智",doubt:"感觉怪怪的",unsure:"无法判断"};
+  const labels = {agree:"A · 三组都是",doubt:"B · 只有其中一组是",unsure:"C · 不一定在这三组里"};
   const total = Object.values(counts).reduce((a,b)=>a+b,0) || 1;
   return Object.entries(labels).map(([key,label]) => `<div class="vote-bar"><header><span>${label}</span><strong>${counts[key] || 0}</strong></header><div class="bar-track"><div class="bar-fill" style="width:${(counts[key]||0)/total*100}%"></div></div></div>`).join("");
-}
-
-function renderVoteComments(comments = [], visible = true) {
-  const track = document.querySelector("#teacherCommentTrack");
-  if (!track) return;
-  const stream = track.closest(".comment-stream");
-  stream.classList.toggle("paused", !visible);
-  const items = visible ? (comments.length ? comments : ["等待学生补充观点……"]) : ["观点展示已关闭"];
-  const signature = JSON.stringify(items);
-  if (track.dataset.signature === signature) return;
-  track.dataset.signature = signature;
-  track.replaceChildren();
-  items.forEach((comment) => {
-    const chip = document.createElement("span");
-    chip.className = "comment-chip";
-    chip.textContent = comment;
-    track.appendChild(chip);
-  });
 }
 
 async function setTeacherStage(stage, returnToLast = false) {
@@ -1848,24 +1859,21 @@ function renderTeacher(state) {
     app.innerHTML = `<section class="teacher-cockpit" id="teacherCockpit">
       <div class="teacher-command-bar panel">
         <div><p class="eyebrow">教师控制台 · 单页运行</p><h2 id="teacherStageTitle"></h2><p class="hint" id="teacherStageDescription"></p></div>
-        <div class="stage-nav"><button class="secondary" id="previousStage">上一步</button><button class="primary" id="nextStage">发布下一步</button><button class="vote-control end-vote" id="endVote">结束选择</button><button class="vote-control reopen-vote" id="reopenVote">重新开放</button><div class="force-reveal-grid" id="forceRevealGrid" aria-label="受力数验呈现进度">${[1,2,3,4,5].map(step => `<button type="button" data-force-reveal-step="${step}" aria-label="呈现到第${step}项">${step}</button>`).join("")}</div><button class="reveal-control" id="forceRevealNext">呈现下一项</button><button class="secondary" id="forceRevealReset">重置呈现</button><button class="secondary" id="focusPreview">放大学生预览</button>${layoutToolsEnabled ? `<button class="secondary" id="openLayoutEditor">版面调试</button>` : ""}</div>
+        <div class="stage-nav"><button class="secondary" id="previousStage">上一步</button><button class="primary" id="nextStage">发布下一步</button><button class="vote-control end-vote" id="endVote">结束选择</button><button class="vote-control reopen-vote" id="reopenVote">重新开放</button><div class="force-reveal-grid" id="forceRevealGrid" aria-label="验证分析 A1 呈现进度">${[1,2,3,4,5].map(step => `<button type="button" data-force-reveal-step="${step}" aria-label="呈现到第${step}项">${step}</button>`).join("")}</div><button class="reveal-control" id="forceRevealNext">呈现下一项</button><button class="secondary" id="forceRevealReset">重置呈现</button><button class="secondary" id="focusPreview">放大学生预览</button>${layoutToolsEnabled ? `<button class="secondary" id="openLayoutEditor">版面调试</button>` : ""}</div>
+        <span class="frame-guard frame-guard-left" aria-hidden="true"></span><span class="frame-guard frame-guard-right" aria-hidden="true"></span>
       </div>
       <div class="stage-roadmap">${roadmap}</div>
       <div class="teacher-workspace">
         <div class="teacher-overview">
-          <section class="panel teacher-pulse"><div class="pulse-heading"><div><p class="eyebrow">课堂脉搏</p><h2>实时投票反馈</h2></div><div><small>本阶段</small><div class="timer" id="stageTimer"></div></div></div>
-            <div class="metric-grid"><div class="metric"><div class="big-number" id="participantCount"></div><small>已参与设备</small></div><div class="metric"><div class="big-number" id="voteCount"></div><small>已提交判断</small></div><div class="metric"><div class="big-number" id="forceCount"></div><small>已观察受力</small></div><div class="metric"><div class="big-number" id="alignmentCount"></div><small>已锁定真解</small></div></div>
-            <div class="vote-bars" id="teacherVoteBars"></div>
-            <div class="comment-tools"><span>匿名补充观点</span><div><button class="secondary compact-button" id="toggleComments">关闭展示</button><button class="secondary compact-button" id="clearComments">清空观点</button></div></div>
-            <div class="comment-stream" aria-label="学生补充观点"><div class="comment-track" id="teacherCommentTrack"></div></div>
-          </section>
-          <section class="panel entry-compact"><img class="qr" src="${config.qr_url}" alt="学生端二维码"/><div><p class="eyebrow">学生入口</p><h2>一次扫码，全程不换页</h2><p class="url">${config.student_url}</p><div class="button-row"><button class="secondary" id="copyUrl">复制学生网址</button><button class="secondary" id="resetButton">重置试讲数据</button></div><p class="hint">教师预览不会写入投票或实验统计。</p></div></section>
+          <section class="panel entry-compact"><img class="qr" src="${config.qr_url}" alt="学生端二维码"/><div><h2>学生入口</h2><p>一次扫码，全程不换页</p><p class="url">${config.student_url}</p><div class="button-row"><span class="primary">自主设计的</span><span class="secondary">AI虚拟实验室</span></div></div></section>
         </div>
         <aside class="panel preview-panel"><div class="preview-heading"><div><p class="eyebrow">投屏演示视角</p><h2>学生端实时预览</h2></div><span class="preview-badge">只读 · 不计数</span></div>
           <div class="device-frame"><iframe id="studentPreview" title="学生端只读预览" src="${config.preview_url}"></iframe></div>
         </aside>
       </div>
     </section>`;
+    // 控制台套上平板外框（顶部栏、命令条换到底部的银色面板），普通视图和放大预览都一样；地址后加 ?frame=0 可以不用外框。
+    document.body.classList.toggle("beam-frame", searchParams.get("frame") !== "0");
     document.querySelectorAll(".roadmap-step[data-stage]").forEach(button => button.addEventListener("click", () => setTeacherStage(Number(button.dataset.stage))));
     document.querySelector("#previousStage").addEventListener("click", () => setTeacherStage(Math.max(0,currentState.stage-1), true));
     document.querySelector("#nextStage").addEventListener("click", () => setTeacherStage(Math.min(3,currentState.stage+1)));
@@ -1897,41 +1905,24 @@ function renderTeacher(state) {
       event.currentTarget.textContent = focused ? "返回控制台" : "放大学生预览";
       document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.protocol === "file:" ? "*" : location.origin);
     });
-    document.querySelector("#resetButton").addEventListener("click", async () => { await api({type:"reset"}); showToast("试讲数据已重置"); });
-    document.querySelector("#copyUrl").addEventListener("click", async () => { await navigator.clipboard.writeText(config.student_url); showToast("学生网址已复制"); });
+    // 入口下方原来的「复制学生网址」「重置试讲数据」按钮改成了两块标签（自主设计的 / AI虚拟实验室），只显示文字，点了没反应。
+    // 版面调试：显示 / 隐藏调试窗口（见 static/layout-tuner.js）。
     document.querySelector("#openLayoutEditor")?.addEventListener("click", () => {
-      const editorUrl = new URL(config.layout_url, location.href);
-      editorUrl.searchParams.set("edit", "1");
-      if (currentState.stage === 3) {
-        const step = Number(currentState.deformation_reveal_step || 0);
-        if (step < 1) {
-          showToast("请先切换到03的第1至第4格");
-          return;
-        }
-        editorUrl.searchParams.set("layout_stage", "3");
-        editorUrl.searchParams.set("layout_step", String(step));
-      }
-      window.open(editorUrl.toString(), "_blank", "noopener");
+      window.dispatchEvent(new CustomEvent("beam-tuner-toggle"));
     });
     document.querySelector("#studentPreview").addEventListener("load", () => {
       const focused = document.querySelector("#teacherCockpit").classList.contains("preview-focus");
       document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.protocol === "file:" ? "*" : location.origin);
     });
-    document.querySelector("#toggleComments").addEventListener("click", () => api({type:"toggle_comments", visible:!currentState.comments_visible}));
-    document.querySelector("#clearComments").addEventListener("click", async () => { await api({type:"clear_comments"}); showToast("补充观点已清空"); });
-    clearInterval(timerHandle); timerHandle = setInterval(() => { const el=document.querySelector("#stageTimer"); if(el) el.textContent=elapsed(currentState.stage_started_at); },1000);
+
   }
-  document.querySelector("#teacherStageTitle").textContent = `0${state.stage} · ${stageLabels[state.stage]}`;
+  // 阶段标题：编号和名称分成两段（外框里编号单独着色），显示的文字和原来一样。
+  const stageTitle = document.querySelector("#teacherStageTitle");
+  if (stageTitle.dataset.stage !== String(state.stage)) {
+    stageTitle.innerHTML = `<span class="stage-no">0${state.stage}</span><span class="stage-sep"> · </span><span class="stage-name">${stageLabels[state.stage]}</span>`;
+    stageTitle.dataset.stage = String(state.stage);
+  }
   document.querySelector("#teacherStageDescription").textContent = descriptions[state.stage];
-  document.querySelector("#stageTimer").textContent = elapsed(state.stage_started_at);
-  document.querySelector("#participantCount").textContent = state.participants;
-  document.querySelector("#voteCount").textContent = state.progress.votes;
-  document.querySelector("#forceCount").textContent = state.progress.force;
-  document.querySelector("#alignmentCount").textContent = state.progress.alignments;
-  document.querySelector("#teacherVoteBars").innerHTML = voteBars(state.vote_counts);
-  renderVoteComments(state.vote_comments || [], state.comments_visible !== false);
-  document.querySelector("#teacherCockpit").classList.toggle("vote-feedback-mode", state.stage === 1 && state.vote_feedback_visible === true);
-  document.querySelector("#toggleComments").textContent = state.comments_visible === false ? "开启展示" : "关闭展示";
   document.querySelectorAll(".roadmap-step[data-stage]").forEach(button => button.classList.toggle("current", Number(button.dataset.stage) === state.stage));
   document.querySelector("#previousStage").disabled = state.stage === 0;
   const endVote = document.querySelector("#endVote");
@@ -1948,7 +1939,7 @@ function renderTeacher(state) {
     : (state.force_reveal_step || 0);
   const revealMax = state.stage === 3 ? 5 : 3;
   forceRevealGrid.hidden = state.stage !== 2 && state.stage !== 3;
-  forceRevealGrid.setAttribute("aria-label", state.stage === 3 ? "协调释理呈现进度" : "受力数验呈现进度");
+  forceRevealGrid.setAttribute("aria-label", state.stage === 3 ? "验证分析 A2 呈现进度" : "验证分析 A1 呈现进度");
   forceRevealGrid.querySelectorAll("[data-force-reveal-step]").forEach(button => {
     const step = Number(button.dataset.forceRevealStep);
     button.hidden = state.stage === 2 && step > 3;
@@ -2068,7 +2059,7 @@ async function tick() {
     if (layoutMode) {
       sessionPill.textContent = "教师版面调试 · 不计入课堂数据";
     } else if (isPreview) {
-      sessionPill.innerHTML = `<span>0${state.stage} · ${stageLabels[state.stage]}</span><strong>${previewElapsed()}</strong>`;
+      sessionPill.textContent = `0${state.stage} · ${stageLabels[state.stage]}`;
     } else {
       sessionPill.textContent = `${role === "teacher" ? "教师端" : "学生端"} · ${state.session_id}`;
     }

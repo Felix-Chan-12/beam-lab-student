@@ -1,4 +1,7 @@
 :root {
+  --text-small: 18px;
+  --text-body: 24px;
+  --text-title: 32px;
   /* PPT统一配色：蓝色承载课程与系统信息，橙色承载判断与行动。 */
   --paper: #f7f9fc;
   --paper-2: #ffffff;
@@ -433,3 +436,268 @@ th { color: var(--muted); font-size: 12px; }
 
 
 
+/* V5：课堂页面仅使用标题、正文、注释三个字号层级。上下标同样使用小字号。 */
+body:not(.layout-mode), body:not(.layout-mode) * { font-size: var(--text-body) !important; }
+body:not(.layout-mode) :is(h1, h1 *, h2, h2 *, .student-feedback-total strong) { font-size: var(--text-title) !important; }
+body:not(.layout-mode) :is(.brand small, .brand strong, .session-pill, .session-pill *, .hint, .symbol-notes, .symbol-notes *, .url, .preview-heading *, .roadmap-step, .roadmap-step *, .stage-nav button, .self-guided-nav *, .vote-status, .toast, .force-live-value, .force-live-value *, .structure-caption, .moment-diagram-title, .deformation-trend-label) { font-size: var(--text-small) !important; }
+body:not(.layout-mode) :is(sub, sup) { font-size: var(--text-small) !important; }
+.steps { display: none; }
+.vote-status:empty { display: none; }
+.hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
+.hero h1 { line-height: 1.5; letter-spacing: 0; }
+.hero h2 { line-height: 1.4; }
+.hero .option { display: flex; align-items: center; gap: 20px; }
+.hero .option strong { margin: 0; color: var(--blue); }
+.hero .equilibrium-system { line-height: 1.5; padding: 14px; }
+.hero .candidate-row { min-height: 62px; }
+.symbol-notes { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 12px; color: var(--muted); }
+.symbol-notes p { margin: 4px 0; line-height: 1.55; }
+.teacher-workspace { grid-template-columns: minmax(320px, .7fr) minmax(0, 1.3fr); min-height: 0; }
+.teacher-overview { grid-template-rows: 1fr; height: auto; }
+.entry-compact { display: flex; flex-direction: column; justify-content: center; text-align: center; gap: 22px; padding: 28px; }
+.entry-compact .qr { width: min(100%, 340px); height: auto; aspect-ratio: 1; }
+.entry-compact > div { padding: 0; width: 100%; }
+.entry-compact .button-row { justify-content: center; }
+.preview-panel { min-height: 650px; }
+.teacher-cockpit.preview-focus .preview-heading { display: none; }
+.teacher-cockpit.preview-focus .preview-panel { padding: 0; min-height: 0; height: calc(100vh - 170px); }
+.force-story:not(.deformation-story) [data-element-slot="originalEquation"],
+.force-story:not(.deformation-story) [data-element-slot="basicEquation"] { display: none !important; }
+@media (max-width: 1000px) {
+  .hero { grid-template-columns: 1fr; }
+  .teacher-workspace { grid-template-columns: 1fr; }
+  .entry-compact .qr { width: min(100%, 300px); }
+}
+@media (max-width: 600px) {
+  :root { --text-small: 16px; --text-body: 20px; --text-title: 26px; }
+  .brand small { display: none; }
+  .topbar { padding: 10px; gap: 8px; }
+  .session-pill { padding: 5px 8px; }
+  .hero .panel { padding: 16px; }
+  .hero .equilibrium-system { padding: 10px 4px; }
+  .hero .candidate-row { gap: 4px; }
+  .vote-submit-row { grid-template-columns: 1fr; }
+}
+/* 嵌入教师控制台时，阶段名和品牌由外层显示一次。 */
+.embedded-preview .topbar { display: none; }
+@media (min-width: 1000px) {
+  .preview-page .force-free-canvas { max-width: calc((100vh - 130px) * 1.2); }
+  .embedded-preview .force-free-canvas { max-width: calc((100vh - 100px) * 1.2); }
+}
+@media (max-width: 600px) {
+  .self-step-control { flex-wrap: wrap; }
+  .self-nav-actions { width: 100%; justify-content: flex-end; }
+  .self-nav-actions button { white-space: nowrap; }
+}
+
+/* V5：英数采用新罗马，中文回退微软雅黑；三个固定字号不再随屏幕缩放。 */
+:root { --text-small: 18px; --text-body: 24px; --text-title: 32px; }
+body, body * { font-family: "Times New Roman", "Microsoft YaHei", serif !important; }
+body:not(.layout-mode) :is(i, .math-variable) { font-style: italic; }
+body:not(.layout-mode) :is(sub, sup, sub *, sup *) { font-size: var(--text-small) !important; }
+body:not(.layout-mode) :is(sub, sup) { line-height: 0; }
+.math-variable { font-size: inherit !important; }
+body:not(.layout-mode) .math-variable { font-size: inherit !important; }
+/* 去掉预览外壳及画布外围面板，只保留内容区域本身的边界。 */
+.preview-panel, .device-frame, .teacher-cockpit.preview-focus .preview-panel,
+.student-page #app > .force-story {
+  border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 0;
+}
+.teacher-cockpit.preview-focus .device-frame { border: 0; border-radius: 0; }
+.embedded-preview { background: #fff; }
+.embedded-preview main { width: 100%; margin: 0; }
+.student-page #app > .force-story { padding: 12px 0 0; }
+.force-story > h1 { padding: 0 14px; }
+.force-composition { align-items: start; gap: 20px; }
+.force-free-canvas { max-width: none !important; }
+.force-controls { padding: 8px 14px 0 0; }
+.teacher-cockpit.preview-focus .preview-panel { height: calc(100vh - 165px); }
+@media (min-width: 1000px) {
+  .embedded-preview .force-composition { grid-template-columns: minmax(0, 1fr) var(--force-control-width); }
+  .embedded-preview .force-free-canvas { width: min(100%, calc((100vh - 80px) * 1.2)); justify-self: end; }
+}
+.endpoint-label { position: absolute; z-index: 6; transform: translate(-100%, -50%); white-space: nowrap; }
+body:not(.layout-mode) .endpoint-label, body:not(.layout-mode) .endpoint-label * { font-size: var(--text-small) !important; }
+@media (min-width: 1000px) {
+  .embedded-preview #app > .force-story { width: min(100%, calc((100vh - 90px) * 1.2 + var(--force-control-width) + 20px)); }
+  .embedded-preview .force-free-canvas { width: 100%; justify-self: start; }
+  .force-story > h1 { padding-left: 0; }
+}
+
+/* Wide classroom layout: diagrams occupy the available width, controls stay at the right. */
+@media (min-width: 1300px) {
+  body:not(.layout-mode) #app > .force-story { width: 100%; }
+  body:not(.layout-mode) .force-composition { grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; }
+  body:not(.layout-mode) .force-free-canvas { width: 100%; aspect-ratio: 2; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) [data-element-slot="originalStructure"] { left: 3% !important; top: 8% !important; width: 43% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) [data-element-slot="basicStructure"] { left: 3% !important; top: 57% !important; width: 43% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) [data-element-slot="originalMomentBg"] { left: 47% !important; top: 15% !important; width: 32% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) [data-element-slot="basicMomentBg"] { left: 47% !important; top: 64% !important; width: 32% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) [data-element-slot^="concept"] { left: 82% !important; width: 16% !important; }
+  body:not(.layout-mode) [data-element-slot="conceptOriginal"] { top: 2% !important; }
+  body:not(.layout-mode) [data-element-slot="conceptReleased"] { top: 35% !important; }
+  body:not(.layout-mode) [data-element-slot="conceptRedundant"] { top: 68% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) .force-stage-caption { left: 3% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) .force-stage-caption.top-caption { top: 2% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) .force-stage-caption.bottom-caption { top: 51% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story) .deformation-row-divider { top: 48%; right: 20% !important; }
+  .special-candidates button { white-space: nowrap; }
+}
+
+@media (min-width: 1300px) {
+  body:not(.layout-mode) .deformation-story .force-free-canvas { aspect-ratio: 1.9; }
+  .deformation-story .top-caption { top: 0; }
+  .deformation-story .bottom-caption { top: 46%; }
+}
+
+@media (min-width: 1300px) {
+  body:not(.layout-mode) .deformation-story [data-element-slot="originalStructure"],
+  body:not(.layout-mode) .deformation-story [data-element-slot="basicStructure"] { left: 55% !important; width: 44% !important; }
+  body:not(.layout-mode) .deformation-story [data-element-slot="originalMomentBg"],
+  body:not(.layout-mode) .deformation-story [data-element-slot="basicMomentBg"] { width: 43% !important; }
+}
+
+@media (min-width: 1300px) { body:not(.layout-mode) .deformation-story [data-element-slot="originalStructure"] { top: 5% !important; } }
+
+@media (min-width: 1300px) {
+  body:not(.layout-mode) .force-story:not(.deformation-story):not([data-reveal-step="3"]) .force-composition { grid-template-columns: 1fr; }
+  body:not(.layout-mode) .force-story:not(.deformation-story):not([data-reveal-step="3"]) .force-controls { display: none; }
+  body:not(.layout-mode) .force-story:not(.deformation-story):not([data-reveal-step="3"]) .force-free-canvas { aspect-ratio: 2.6; }
+  body:not(.layout-mode) .force-story:not(.deformation-story):not([data-reveal-step="3"]) [data-element-slot$="Structure"] { left: 12% !important; width: 34% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story):not([data-reveal-step="3"]) [data-element-slot^="concept"] { left: 70% !important; width: 12% !important; }
+  body:not(.layout-mode) .force-story:not(.deformation-story)[data-reveal-step="0"] [data-element-slot="originalStructure"] { left: 25% !important; width: 50% !important; top: 12% !important; }
+}
+
+/* 副本：控制台普通视图里，「学生预览（整体）」加上和左侧「学生入口」一样的圆角框（放大预览时仍然无框）。 */
+.teacher-cockpit:not(.preview-focus) .preview-panel {
+  background: rgba(255,255,255,.96);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 28px;
+}
+
+/* ================================================================
+   副本：教师控制台套上平板外框（body.beam-frame；teacher.html 一打开就加上，?frame=0 不加）。
+   普通视图和「放大学生预览」都一样：原来顶部的内容换到底部——命令条 → 银色面板（阶段名、按键），
+   顶部栏 → 面板下沿一行 BEAM LAB 小字；整个画面加一圈深色机身和四个橙色护角。
+   屏幕就是「控制台主体」，宽度沿用版面调试里的设置（默认比窗口窄 76px）。
+   这些样式不加 !important（字号除外），版面调试里的调整照样能盖过它们。
+   ================================================================ */
+/* 外框尺寸（放在 body 上，版面调试用它估计缩略图的大小；银色面板的高度可在版面调试里改，改的值写在屏幕上） */
+body {
+  --fr-out: 14px;      /* 机身到窗口上、左、右边 */
+  --fr-bez: 28px;      /* 上边框 */
+  --fr-side: 16px;     /* 左右边框 */
+  --fr-ring: 8px;      /* 屏幕白边 */
+  --fr-gap: 14px;      /* 屏幕和银色面板之间的深色边 */
+  --fr-panel: 126px;   /* 银色面板高 */
+  --fr-bottom: 42px;   /* 机身下沿到窗口底 */
+  --fr-guard: 130px;   /* 上方两个护角（下方两个在版面调试里单独调） */
+  --fr-key: 58px;      /* 按键高 */
+  --fr-brand: 16px;    /* 面板下沿留给 BEAM LAB 小字的高度 */
+}
+.frame-guard { display: none; }
+body.beam-frame { display: flow-root; overflow-x: hidden; background: linear-gradient(180deg, #f2f5f8 0%, #dfe5ec 100%); }
+body.beam-frame > .topbar { display: none; }
+/* 屏幕 = 控制台主体；里面的内容（普通视图的阶段路线、入口、缩略图，或放大后的学生预览）都在屏幕里 */
+body.beam-frame #app { position: relative; z-index: 0; isolation: isolate; max-width: none;
+  width: calc(100% - 2 * (var(--fr-out) + var(--fr-side) + var(--fr-ring)));
+  margin: calc(var(--fr-out) + var(--fr-bez) + var(--fr-ring)) auto 0; }
+/* 屏幕高 = 窗口高 − 外框（在屏幕上算，银色面板改了高度时屏幕跟着变） */
+body.beam-frame #teacherCockpit { height: calc(100vh - var(--fr-out) - var(--fr-bez) - 2 * var(--fr-ring) - var(--fr-gap) - var(--fr-panel) - var(--fr-bottom));
+  overflow: hidden auto; border-radius: 3px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--paper) 100%);
+  box-shadow: 0 0 0 var(--fr-ring) #fff, 0 0 0 calc(var(--fr-ring) + 3px) #0a0c10, 0 0 0 calc(var(--fr-ring) + 4px) rgba(255,255,255,.06); }
+body.beam-frame #teacherCockpit:not(.preview-focus) { grid-template-rows: auto minmax(0, 1fr); padding: 14px 16px; }
+body.beam-frame #teacherCockpit .teacher-workspace { min-height: 0; height: auto; }
+/* 普通视图：内容放不下时（窗口小，或二维码调得很大）缩到屏幕里——学生预览缩小，二维码跟着变小 */
+body.beam-frame #teacherCockpit:not(.preview-focus) .teacher-workspace { grid-template-rows: minmax(0, 1fr); }
+body.beam-frame #teacherCockpit:not(.preview-focus) .teacher-overview { grid-template-rows: minmax(0, 1fr); }
+body.beam-frame #teacherCockpit:not(.preview-focus) .preview-panel { min-height: 0; }
+body.beam-frame #teacherCockpit .entry-compact { justify-content: safe center; }
+body.beam-frame #teacherCockpit .entry-compact .qr { min-height: 150px; }  /* 最小 150，再小就不好扫了（这时屏幕里可以上下滚） */
+body.beam-frame #teacherCockpit.preview-focus { grid-template-rows: minmax(0, 1fr); background: #fff; }
+body.beam-frame #teacherCockpit.preview-focus .preview-panel { height: auto; }
+body.beam-frame #teacherCockpit.preview-focus .device-frame { flex: 1; }
+body.beam-frame #teacherCockpit.preview-focus .device-frame iframe { height: 100%; }
+/* 深色机身（上沿中间一个摄像头）和上面两个护角 */
+body.beam-frame #app::before { content: ""; position: absolute; z-index: -2; pointer-events: none;
+  left: calc(-1 * (var(--fr-side) + var(--fr-ring))); right: calc(-1 * (var(--fr-side) + var(--fr-ring)));
+  top: calc(-1 * (var(--fr-bez) + var(--fr-ring))); bottom: calc(-1 * (var(--fr-ring) + var(--fr-gap) + 40px));
+  border-radius: 46px 46px 0 0;
+  background: radial-gradient(circle at 50% calc(var(--fr-bez) / 2), #5b7fb5 0 1.6px, #0b0e13 2.6px 5px, #14181d 5.5px 7px, transparent 7.5px), linear-gradient(180deg, #2c323a, #1d2228);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 0 0 2px #13171c; }
+body.beam-frame #app::after { content: ""; position: absolute; z-index: -1; pointer-events: none;
+  left: calc(-1 * (var(--fr-side) + var(--fr-ring)) - 12px); right: calc(-1 * (var(--fr-side) + var(--fr-ring)) - 12px);
+  top: calc(-1 * (var(--fr-bez) + var(--fr-ring)) - 12px); height: var(--fr-guard);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 130 130' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ee7f3f'/%3E%3Cstop offset='1' stop-color='%23c9591c'/%3E%3C/linearGradient%3E%3ClinearGradient id='h' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='.3'/%3E%3Cstop offset='.06' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='.9' stop-color='%23000' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='.18'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M58 0H116A14 14 0 0 1 130 14V116A14 14 0 0 1 116 130H14A14 14 0 0 1 0 116V58A58 58 0 0 1 58 0Z' fill='url(%23g)'/%3E%3Cpath d='M58 0H116A14 14 0 0 1 130 14V116A14 14 0 0 1 116 130H14A14 14 0 0 1 0 116V58A58 58 0 0 1 58 0Z' fill='url(%23h)'/%3E%3C/svg%3E") left top / var(--fr-guard) var(--fr-guard) no-repeat, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 130 130' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ee7f3f'/%3E%3Cstop offset='1' stop-color='%23c9591c'/%3E%3C/linearGradient%3E%3ClinearGradient id='h' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='.3'/%3E%3Cstop offset='.06' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='.9' stop-color='%23000' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='.18'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M14 0H72A58 58 0 0 1 130 58V116A14 14 0 0 1 116 130H14A14 14 0 0 1 0 116V14A14 14 0 0 1 14 0Z' fill='url(%23g)'/%3E%3Cpath d='M14 0H72A58 58 0 0 1 130 58V116A14 14 0 0 1 116 130H14A14 14 0 0 1 0 116V14A14 14 0 0 1 14 0Z' fill='url(%23h)'/%3E%3C/svg%3E") right top / var(--fr-guard) var(--fr-guard) no-repeat;
+  filter: drop-shadow(0 8px 12px rgba(120,50,10,.18)); }
+/* 命令条 → 银色面板（下面两个护角是面板里的真实元素，大小用 --fr-guard-b，版面调试可调） */
+body.beam-frame #teacherCockpit > .teacher-command-bar { --fr-guard-b: var(--fr-guard);
+  position: absolute; z-index: 1; margin: 0;
+  left: calc(-1 * (var(--fr-side) + var(--fr-ring))); right: calc(-1 * (var(--fr-side) + var(--fr-ring)));
+  top: calc(100% + var(--fr-ring) + var(--fr-gap)); height: var(--fr-panel); min-height: 0;
+  display: flex; justify-content: center; align-items: center; gap: 0;
+  padding: 0 calc(var(--fr-guard-b) + 20px) var(--fr-brand);
+  border: 1px solid #aeb6c0; border-top: 0; border-radius: 0 0 46px 46px;
+  background: linear-gradient(180deg, #f7f8fa 0%, #e3e7ec 55%, #cfd5dc 100%);
+  box-shadow: 0 -1px 0 #0d1014, inset 0 2px 0 rgba(255,255,255,.95), inset 0 -3px 0 rgba(0,0,0,.07), 0 18px 32px rgba(15,23,42,.26); }
+/* 原来的顶部栏换成面板下沿一行小字 */
+body.beam-frame #teacherCockpit > .teacher-command-bar::before { content: "BEAM LAB"; position: absolute; left: 50%; bottom: calc(var(--fr-brand) * .6);
+  transform: translateX(-50%); pointer-events: none; white-space: nowrap; color: #9aa3ae;
+  font: 800 calc(var(--text-small) * .67) / 1 "Times New Roman", Georgia, serif; letter-spacing: .36em; }
+body.beam-frame #teacherCockpit .frame-guard { display: block; position: absolute; z-index: 1; bottom: -12px;
+  width: var(--fr-guard-b); height: var(--fr-guard-b); background: no-repeat center / 100% 100%;
+  filter: drop-shadow(0 8px 12px rgba(120,50,10,.18)); }
+body.beam-frame #teacherCockpit .frame-guard-left { left: -12px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 130 130' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ee7f3f'/%3E%3Cstop offset='1' stop-color='%23c9591c'/%3E%3C/linearGradient%3E%3ClinearGradient id='h' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='.3'/%3E%3Cstop offset='.06' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='.9' stop-color='%23000' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='.18'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M14 0H116A14 14 0 0 1 130 14V116A14 14 0 0 1 116 130H58A58 58 0 0 1 0 72V14A14 14 0 0 1 14 0Z' fill='url(%23g)'/%3E%3Cpath d='M14 0H116A14 14 0 0 1 130 14V116A14 14 0 0 1 116 130H58A58 58 0 0 1 0 72V14A14 14 0 0 1 14 0Z' fill='url(%23h)'/%3E%3C/svg%3E"); }
+body.beam-frame #teacherCockpit .frame-guard-right { right: -12px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 130 130' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ee7f3f'/%3E%3Cstop offset='1' stop-color='%23c9591c'/%3E%3C/linearGradient%3E%3ClinearGradient id='h' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='.3'/%3E%3Cstop offset='.06' stop-color='%23fff' stop-opacity='0'/%3E%3Cstop offset='.9' stop-color='%23000' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='%23000' stop-opacity='.18'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M14 0H116A14 14 0 0 1 130 14V72A58 58 0 0 1 72 130H14A14 14 0 0 1 0 116V14A14 14 0 0 1 14 0Z' fill='url(%23g)'/%3E%3Cpath d='M14 0H116A14 14 0 0 1 130 14V72A58 58 0 0 1 72 130H14A14 14 0 0 1 0 116V14A14 14 0 0 1 14 0Z' fill='url(%23h)'/%3E%3C/svg%3E"); }
+/* 阶段名：面板左边，编号橙色 */
+body.beam-frame #teacherCockpit > .teacher-command-bar > div:first-child { position: absolute; left: calc(var(--fr-guard-b) + 20px); top: calc(50% - var(--fr-brand) / 2); transform: translateY(-50%); }
+body.beam-frame #teacherStageTitle { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; color: #2d3440; font-weight: 800; letter-spacing: .04em; font-size: calc(var(--text-title) * .5625) !important; }
+body.beam-frame #teacherStageTitle .stage-no { color: #cf5d1d; letter-spacing: 0; font-size: calc(var(--text-title) * .94) !important; }
+body.beam-frame #teacherStageTitle .stage-name, body.beam-frame #teacherStageTitle .stage-name * { font-size: calc(var(--text-title) * .5625) !important; }
+body.beam-frame #teacherStageTitle .stage-sep { display: none; }
+/* 按键：中间一排（上一步、步骤键、重置呈现、结束选择、重新开放、下一步），右边是放大学生预览 / 返回控制台 */
+body.beam-frame #teacherCockpit .stage-nav { display: flex; flex-wrap: nowrap; justify-content: center; align-items: center; gap: 14px; }
+body.beam-frame #teacherCockpit .stage-nav > button:not([hidden]),
+body.beam-frame #teacherCockpit .force-reveal-grid > button:not([hidden]) {
+  height: var(--fr-key); min-width: var(--fr-key); padding: 0 20px; border: 0; border-radius: 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+  background: linear-gradient(180deg, #454e5a, #30363f); color: #eef2f6; font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16), inset 0 -2px 0 rgba(0,0,0,.35), 0 4px 0 #11151a, 0 9px 14px rgba(0,0,0,.26); }
+body.beam-frame #previousStage { order: 1; }
+body.beam-frame #forceRevealGrid { order: 2; }
+body.beam-frame #forceRevealReset { order: 3; }
+body.beam-frame #endVote { order: 4; }
+body.beam-frame #reopenVote { order: 5; }
+body.beam-frame #nextStage { order: 6; }
+body.beam-frame #previousStage::before { content: "◀"; font-size: .75em; opacity: .85; }
+body.beam-frame #nextStage::after { content: "▶"; font-size: .75em; opacity: .9; }
+body.beam-frame #teacherCockpit .stage-nav > #nextStage:not([hidden]) { padding: 0 26px; background: linear-gradient(180deg, #f08c47, #cf5d1d); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 0 #74300f, 0 10px 18px rgba(207,93,29,.32); }
+body.beam-frame #teacherCockpit .stage-nav button:disabled { opacity: .42; box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 2px 0 #11151a; }
+body.beam-frame #teacherCockpit .stage-nav > #nextStage:disabled { opacity: 1; background: linear-gradient(180deg, #f7c6a5, #eaa77c); color: #fff8f2; box-shadow: 0 2px 0 #c48158; }
+/* 步骤键：数字下面一条指示灯，已呈现的亮，当前这一步按下去 */
+body.beam-frame #forceRevealGrid:not([hidden]) { display: flex; gap: 8px; }
+body.beam-frame #forceRevealGrid > button:not([hidden]) { width: 56px; min-width: 56px; padding: 0; flex-direction: column; gap: 7px; font-size: calc(var(--text-small) * 1.17) !important; }
+body.beam-frame #forceRevealGrid > button::after { content: ""; width: 20px; height: 4px; border-radius: 2px; background: #1f252c; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); }
+body.beam-frame #forceRevealGrid > button.active::after { background: #ffb15c; box-shadow: 0 0 7px 1px rgba(255,165,80,.8); }
+body.beam-frame #forceRevealGrid > button.active:not(:has(+ button.active)) { transform: translateY(3px); color: #ffcf9e; box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 1px 0 #11151a, 0 3px 6px rgba(0,0,0,.3); }
+/* 右边：放大学生预览 / 返回控制台（「版面调试」按钮只在 ?edit=1 时有） */
+body.beam-frame #focusPreview, body.beam-frame #openLayoutEditor { position: absolute; top: calc(50% - var(--fr-brand) / 2); transform: translateY(-50%); }
+body.beam-frame #teacherCockpit .stage-nav > #focusPreview, body.beam-frame #teacherCockpit .stage-nav > #openLayoutEditor { height: calc(var(--fr-key) - 8px); padding: 0 16px; font-size: calc(var(--text-small) * .9) !important; }
+body.beam-frame #focusPreview { right: calc(var(--fr-guard-b) + 20px); }
+body.beam-frame #openLayoutEditor { right: calc(var(--fr-guard-b) + 164px); }
+/* 窗口不够大（没按 F11 全屏、笔记本 125% 缩放、投影 1280×720 等）：外框收窄，屏幕留得和原来差不多高 */
+@media (max-width: 1500px), (max-height: 999px) {
+  body { --fr-out: 12px; --fr-bez: 20px; --fr-side: 12px; --fr-ring: 6px; --fr-gap: 10px; --fr-panel: 100px; --fr-bottom: 16px; --fr-guard: 100px; --fr-key: 46px; --fr-brand: 18px; }
+  body.beam-frame #teacherCockpit .stage-nav { gap: 10px; }
+  body.beam-frame #forceRevealGrid > button:not([hidden]) { width: 46px; min-width: 46px; }
+  body.beam-frame #openLayoutEditor { right: calc(var(--fr-guard-b) + 150px); }
+  body.beam-frame #teacherCockpit > .teacher-command-bar::before { font-size: calc(var(--text-small) * .6); bottom: 5px; }
+  body.beam-frame #teacherCockpit:not(.preview-focus) { padding: 10px 12px; }
+}
+@media (max-width: 1500px) {
+  body.beam-frame #teacherStageTitle .stage-name { display: none; }
+}
