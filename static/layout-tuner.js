@@ -62,7 +62,13 @@
   };
   // 当前页面参与匹配的档位（教师页没有手机档）。
   const ACTIVE_REGIMES = isSelfGuided ? ["phone", "wide", "medium", "narrow"] : ["wide", "medium", "narrow"];
-  const PHONE_TEXT_K = 0.6; // 手机上画布里文字的默认比例（相对 18/24/32px）
+  const PHONE_TEXT_K = 0.6; // 手机上画布里文字的默认比例（相对 18/24/32px；还没量过教师版画布时用）
+  // 手机版面自动照搬教师版：图（画布）按教师版整块等比缩小（宽高比、位置、标注的大小和偏移都一样），其余按手机排。
+  // 手机自己的调整（student-edit.html 里调的，存在 "phone" 档）不再使用，文件里保留不删；student-edit.html 只用来预览。
+  // 需要教师版各页画布的大小：保存时自动量，存在配置文件的 canvas 里。
+  const PHONE_AUTO = true;
+  const REPLICA_KINDS = new Set(["abs", "abstext", "arrow", "bar", "label"]); // 画布里的元素：教师版的调整全部照搬
+  const CANVAS_PAGE = /^A[12]-\d$/; // 有画布的页
   const PHONE_DEVICES = [
     { key: "iphone15", label: "iPhone 14 / 15（390×844）", w: 390, h: 844 },
     { key: "iphoneSE", label: "iPhone SE（375×667）", w: 375, h: 667 },
@@ -418,10 +424,24 @@
     }
     return out;
   }
+  // 教师版各页画布的大小（手机照搬用）：{ width: 量的时候教师版页面的宽（px），pages: { "A1-0": [画布宽, 画布高]（px）, … } }
+  function normCanvas(raw) {
+    if (!raw || typeof raw !== "object" || !(Number(raw.width) > 0) || !raw.pages || typeof raw.pages !== "object") return null;
+    const pages = {};
+    for (const [key, size] of Object.entries(raw.pages)) {
+      if (!CANVAS_PAGE.test(key) || !Array.isArray(size)) continue;
+      const w = Number(size[0]);
+      const h = Number(size[1]);
+      if (w > 0 && h > 0) pages[key] = [round(w, 1), round(h, 1)];
+    }
+    return Object.keys(pages).length ? { width: round(Number(raw.width), 1), pages } : null;
+  }
   function normalize(raw) {
     const out = emptyData();
     const votes = normVotes(raw && raw.votes);
     if (votes) out.votes = votes;
+    const canvasSizes = normCanvas(raw && raw.canvas);
+    if (canvasSizes) out.canvas = canvasSizes;
     if (!raw || typeof raw !== "object" || !raw.regimes || typeof raw.regimes !== "object") return out;
     const legacy = Number(raw.version || 1) < 2;
     for (const regimeKey of Object.keys(REGIMES)) {
@@ -473,13 +493,13 @@
   function scoped(scope, sel) {
     return /^body(?![\w-])/.test(sel) ? `${scope}${sel.slice(4)}` : `${scope} ${sel}`;
   }
-  // 文字大小：相对默认字号的比例；var(--beam-k) 是手机画布里的默认比例（教师页没有，按 1 计）。
+  // 文字大小：相对默认字号的比例；var(--beam-unit) 是「教师版 1px」在这里有多大（只有手机画布里有，其他地方按 1px 计）。
   function textVars(k) {
     const I = " !important";
     return [
-      `--text-small: calc(${BASE_TEXT.small}px * ${k} * var(--beam-k, 1))${I}`,
-      `--text-body: calc(${BASE_TEXT.body}px * ${k} * var(--beam-k, 1))${I}`,
-      `--text-title: calc(${BASE_TEXT.title}px * ${k} * var(--beam-k, 1))${I}`,
+      `--text-small: calc(${BASE_TEXT.small} * ${k} * var(--beam-unit, 1px))${I}`,
+      `--text-body: calc(${BASE_TEXT.body} * ${k} * var(--beam-unit, 1px))${I}`,
+      `--text-title: calc(${BASE_TEXT.title} * ${k} * var(--beam-unit, 1px))${I}`,
     ];
   }
   function declarations(entry, only) {
@@ -566,7 +586,7 @@
     const I = " !important";
     const S = (slot) => `[data-element-slot="${slot}"]`;
     const rules = [
-      `${P} .force-free-canvas { width: 100%${I}; aspect-ratio: 2; --beam-k: ${PHONE_TEXT_K}; --text-small: calc(${BASE_TEXT.small}px * var(--beam-k)); --text-body: calc(${BASE_TEXT.body}px * var(--beam-k)); --text-title: calc(${BASE_TEXT.title}px * var(--beam-k)); }`,
+      `${P} .force-free-canvas { width: 100%${I}; aspect-ratio: 2; --beam-unit: ${PHONE_TEXT_K}px; --text-small: calc(${BASE_TEXT.small} * var(--beam-unit)); --text-body: calc(${BASE_TEXT.body} * var(--beam-unit)); --text-title: calc(${BASE_TEXT.title} * var(--beam-unit)); }`,
       `${F} ${S("originalStructure")} { left: 3%${I}; top: 8%${I}; width: 43%${I}; }`,
       `${F} ${S("basicStructure")} { left: 3%${I}; top: 57%${I}; width: 43%${I}; }`,
       `${F} ${S("originalMomentBg")} { left: 47%${I}; top: 15%${I}; width: 32%${I}; }`,
@@ -593,6 +613,48 @@
     ];
     phoneBase = `  /* 手机：先按教师版宽屏档的画布排布 */\n${rules.map((rule) => `  ${rule}\n`).join("")}`;
     return phoneBase;
+  }
+  // 手机照搬教师版：画布按教师版的大小排版（宽、宽高比、字号都和投屏一样），再整块缩到手机宽度（zoom，见 fitReplicaCanvas）。
+  // 某页没量到时，借同一部分（A1 / A2）量到的页。
+  function replicaSize(data, key) {
+    if (!PHONE_AUTO || !data || !data.canvas || !CANVAS_PAGE.test(String(key))) return null;
+    const sizes = data.canvas.pages;
+    const known = Object.keys(sizes);
+    return sizes[key] || sizes[known.find((k) => k.slice(0, 2) === key.slice(0, 2))] || sizes[known[0]] || null;
+  }
+  // 量过教师版画布（在教师版保存过一次）才照搬；还没量过时，手机保持原来的样子（用手机自己的调整）。
+  function phoneAuto(data) {
+    return PHONE_AUTO && Boolean(data && data.canvas);
+  }
+  function replicaBaseCss(data) {
+    if (!phoneAuto(data)) return "";
+    const P = "html body.self-guided-page";
+    let css = "";
+    for (const [key] of PAGES) {
+      const size = replicaSize(data, key);
+      if (!size) continue;
+      css += `  ${P}[data-beam-page="${cssString(key)}"]:not(.layout-mode) .force-free-canvas { width: ${size[0]}px !important; max-width: none !important; aspect-ratio: ${round(size[0] / size[1], 4)} !important; --beam-unit: 1px; }\n`;
+    }
+    css += `  ${P} .force-controls { grid-template-columns: minmax(0, 1fr) !important; }\n`;
+    return `  /* 手机照搬教师版的画布 */\n${css}`;
+  }
+  // 画布里的元素照搬教师版的全部调整；vw 换成量画布时教师版页面上的 px（画布整块缩放，px 跟着一起缩）。
+  function replicaDeclarations(entry, width) {
+    const body = entry.kind === "canvas" ? declarations(entry, ["text"]) : declarations(entry);
+    return body.replace(/(-?\d*\.?\d+)vw\b/g, (m, n) => `${round(Number(n) * width / 100, 2)}px`);
+  }
+  // 把按教师版大小排好的画布整块缩到手机宽度。手机档以外（电脑、横屏）不缩。
+  function fitReplicaCanvas() {
+    const canvas = document.querySelector(".force-free-canvas");
+    if (!canvas) return;
+    const size = currentRegime() === "phone" ? replicaSize(activeData, document.body.dataset.beamPage) : null;
+    let zoom = "";
+    if (size && canvas.parentElement) {
+      const cs = getComputedStyle(canvas.parentElement);
+      const avail = canvas.parentElement.clientWidth - px(cs.paddingLeft) - px(cs.paddingRight);
+      if (avail > 0) zoom = String(round(avail / size[0], 5));
+    }
+    if (canvas.style.zoom !== zoom) canvas.style.zoom = zoom;
   }
   let lastImageSig = null;
   let lastImageCss = "";
@@ -622,18 +684,21 @@
     for (const [regimeKey, regimeDef] of Object.entries(REGIMES)) {
       const phone = regimeKey === "phone";
       if (phone && !isSelfGuided) continue; // 手机档只用于学生页
-      // 手机档：先写继承的教师版（宽屏档）调整，再写手机自己的调整。
+      // 手机档：照搬教师版（宽屏档）的调整；量过教师版画布后，手机自己的调整不再使用（phoneAuto）。
       const layers = [];
       if (phone && data.regimes.wide) layers.push({ pages: data.regimes.wide, inherit: true });
-      if (data.regimes[regimeKey]) layers.push({ pages: data.regimes[regimeKey], inherit: false });
-      let rules = phone ? phoneBaseCss() : "";
+      if (data.regimes[regimeKey] && !(phone && phoneAuto(data))) layers.push({ pages: data.regimes[regimeKey], inherit: false });
+      const replica = phone && phoneAuto(data) ? data.canvas.width : 0;
+      let rules = phone ? phoneBaseCss() + replicaBaseCss(data) : "";
       let imageRules = "";
       for (const { pages, inherit } of layers) {
         for (const bucketKey of orderedBuckets(pages)) {
           if (phone && isConsoleKey(bucketKey)) continue;
           const scope = scopeFor(bucketKey, regimeKey);
           for (const [entryKey, entry] of Object.entries(pages[bucketKey])) {
-            const body = inherit ? declarations(Object.assign({}, entry, { props: inheritedProps(entry) })) : declarations(entry);
+            const body = !inherit ? declarations(entry)
+              : replica ? (REPLICA_KINDS.has(entry.kind) || entry.kind === "canvas" ? replicaDeclarations(entry, replica) : "")
+              : declarations(Object.assign({}, entry, { props: inheritedProps(entry) }));
             // :where() 不增加优先级，保持「两种视图 → 当前视图」的先后关系。
             const layoutScope = isConsoleKey(bucketKey) && FRAME_OWNED.has(entryKey) ? `${scope}:where(:not(.beam-frame))` : scope;
             if (body) rules += `  ${scoped(layoutScope, entry.sel)} { ${body}; }\n`;
@@ -714,7 +779,7 @@
     if (regimeKey === "phone") {
       keys.forEach((key) => { if (!isConsoleKey(key)) Object.values(data.regimes.wide?.[key] || {}).forEach((entry) => list.push({ entry, inherited: true })); });
     }
-    keys.forEach((key) => Object.values(data.regimes[regimeKey]?.[key] || {}).forEach((entry) => list.push({ entry, inherited: false })));
+    if (!(regimeKey === "phone" && PHONE_AUTO)) keys.forEach((key) => Object.values(data.regimes[regimeKey]?.[key] || {}).forEach((entry) => list.push({ entry, inherited: false })));
     return list;
   }
   function applyContent() {
@@ -743,6 +808,7 @@
     applyCss(data);
     applyContent();
     applyVotes(data);
+    fitReplicaCanvas();
   }
   // 投票人数交给 app.js（window.BEAM_VOTE_COUNTS），E 投票反馈页马上按这组数显示。
   let appliedVotes;
@@ -766,6 +832,7 @@
       + '// "wide" "medium" "narrow" 是教师版（按宽度分档），"phone" 是学生页的手机版面。\n'
       + '// 想恢复默认版面：把 "regimes" 后面的内容改成 {}，或在版面调试里重置后再保存。\n'
       + (data.votes ? '// "votes" 是 E 投票反馈页的人数（agree = A、doubt = B、unsure = C），在版面调试里选中「人数方块」可以改。\n' : "")
+      + (data.canvas ? '// "canvas" 是教师版各页画布的大小，手机照搬教师版时用；保存时自动量，不用改。\n' : "")
       + `window.BEAM_LAYOUT_OVERRIDES = ${JSON.stringify(payload, null, 2)};\n`;
   }
   function downloadFile(content) {
@@ -938,15 +1005,17 @@
     const pageUi = kind !== "console";
     const resetLabel = kind === "console" ? "重置控制台" : "重置本页";
     const resetAll = kind === "phone" ? "全部恢复成教师版的样子" : kind === "page" ? "所有页全部重置（本档）" : "";
+    const previewOnly = kind === "phone" && PHONE_AUTO;
     return `<button class="pill" hidden title="展开版面调试">版面调试 ▸</button>
-      <section class="panel${docked ? " docked" : ""}">
-        <header><strong>${kind === "phone" ? "手机版面调试" : "版面调试"}</strong><span class="page-tag"></span><span class="spacer"></span>
+      <section class="panel${docked ? " docked" : ""}${previewOnly ? " preview-only" : ""}">
+        <header><strong>${previewOnly ? "手机版面预览" : kind === "phone" ? "手机版面调试" : "版面调试"}</strong><span class="page-tag"></span><span class="spacer"></span>
           <button class="head-btn scope-btn" data-action="scope" hidden></button>
           ${docked ? "" : '<button class="head-btn" data-action="flip" title="把窗口移到另一侧">⇆</button><button class="head-btn" data-action="collapse" title="收起">—</button>'}</header>
         <div class="body">
           <div class="regime"></div>
           ${pageUi ? `<div class="row"><select class="page-select" title="切换到要调整的页面">${pages.map(([key, label]) => `<option value="${key}">${escapeHtml(label)}</option>`).join("")}</select>
             <button data-action="prev-page" title="上一页">◀</button><button data-action="next-page" title="下一页">▶</button></div>` : ""}
+          ${previewOnly ? `<p class="hint preview-note">手机版面现在自动照搬教师版：图（画布）按教师版整块等比缩小，比例、位置、标注都和投屏一样；标题、按钮、滑块按手机排。这里只用来预览，不用再调。<br>要改图，就在教师版里调（teacher.html?edit=1），保存后手机自动跟着变。<br><b>第一次用：</b>先在 teacher.html?edit=1 点一次「保存到文件」（保存时会自动量教师版各页画布），再点上面的「刷新手机画面」。没保存之前，手机还是原来的样子。</p>` : ""}
           <div class="row wrap"><button data-action="pick" class="pick">🎯 在页面上点选</button><button data-action="parent" title="选中外面一层">↑ 外层</button></div>
           <div class="list-title">${kind === "console" ? "控制台元素" : "本页元素"}（● = 已调整）</div>
           <div class="chips"></div>
@@ -957,7 +1026,7 @@
             <div class="row"><button class="primary" data-action="save">保存到文件</button><span class="spacer"></span></div>
             <details class="more"><summary>更多</summary>
               <div class="row wrap"><button data-action="discard">放弃未保存的改动</button><button data-action="download">下载配置文件</button>
-              <button data-action="forget-file">重新选择保存位置</button>${resetAll ? `<button data-action="reset-all">${resetAll}</button>` : ""}${newTab ? '<button data-action="new-tab">在新标签页打开</button>' : ""}${kind !== "phone" ? '<button data-action="open-phone" title="在新标签页打开 student-edit.html">调学生页手机版面 ↗</button>' : ""}</div>
+              <button data-action="forget-file">重新选择保存位置</button>${resetAll ? `<button data-action="reset-all">${resetAll}</button>` : ""}${newTab ? '<button data-action="new-tab">在新标签页打开</button>' : ""}${kind !== "phone" ? '<button data-action="open-phone" title="在新标签页打开 student-edit.html">看学生页手机版面 ↗</button>' : ""}</div>
               <p class="hint">第一次保存会弹出保存对话框：请选到<b>本副本的 static 文件夹</b>，文件名保持 <b>${FILE_NAME}</b>，替换原文件。之后再保存会直接写入同一个文件。</p>
             </details>
           </div>
@@ -2198,7 +2267,35 @@
     }
 
     /* 保存 */
+    // 手机照搬教师版要用教师版各页画布的大小：保存前量一遍（预览会快速翻一遍 A1、A2 各页，量完回到原来那一页）。
+    async function measureCanvasPages() {
+      if (ctx.kind !== "page" || currentRegime() !== "wide" || typeof api !== "function") return null;
+      const start = pageKey();
+      const sizes = {};
+      for (const [key] of pages) {
+        if (!CANVAS_PAGE.test(key)) continue;
+        await gotoPage(key);
+        const size = await settledCanvasSize(key);
+        if (size) sizes[key] = size;
+      }
+      if (start) await gotoPage(start);
+      return Object.keys(sizes).length ? { width: round(window.innerWidth, 1), pages: sizes } : null;
+    }
+    function takeCanvasSizes(sizes) {
+      if (!sizes || canon(sizes) === canon(draft.canvas || null)) return;
+      draft.canvas = sizes;
+      commit({ noUndo: true, keepNote: true });
+    }
+    async function refreshCanvasSizes() {
+      if (ctx.kind === "phone" || !PHONE_AUTO) return;
+      statusNote = "正在量教师版各页画布的大小（手机照搬教师版用），预览会快速翻一遍各页…";
+      renderStatus();
+      let sizes = null;
+      try { sizes = ctx.measureCanvas ? await ctx.measureCanvas() : await measureCanvasPages(); } catch (_) {}
+      takeCanvasSizes(sizes);
+    }
     async function save() {
+      await refreshCanvasSizes();
       const snapshotData = clone(draft);
       const content = fileContent(snapshotData);
       statusNote = "正在保存…";
@@ -2416,6 +2513,7 @@
       gotoPage,
       save,
       replay,
+      async measureCanvas() { const sizes = await measureCanvasPages(); takeCanvasSizes(sizes); return sizes; },
       select: (key) => { const def = [...ctx.registry, ...pickedDefs()].find((d) => d.key === key); if (def) select(def); },
       setLevel: (key, level, content) => { const def = [...ctx.registry, ...pickedDefs()].find((d) => d.key === key); if (def) setLevel(def, level, Boolean(content)); },
       levelOf: (key, content) => { const def = [...ctx.registry, ...pickedDefs()].find((d) => d.key === key); return def ? (content ? contentLevel(def) : editLevel(def)) : null; },
@@ -2427,6 +2525,8 @@
       font: 12.5px/1.45 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif !important; color: #1f2933 !important; }
     :host([hidden]) { display: none !important; }
     :host([data-frame]) .panel { max-height: calc(100vh - 200px); }
+    .panel.preview-only .body > .row.wrap, .panel.preview-only .list-title, .panel.preview-only .chips, .panel.preview-only .editor, .panel.preview-only .footer { display: none; }
+    .panel.preview-only .preview-note { font-size: 13px; line-height: 1.7; color: #1f2933; background: #fff7ef; border: 1px solid #f3c9a6; border-radius: 10px; padding: 10px 12px; }
     * { box-sizing: border-box; font-family: inherit; }
     [hidden] { display: none !important; }
     .panel { position: fixed; pointer-events: auto; width: 340px; max-height: calc(100vh - 12px); display: flex; flex-direction: column; background: #fff;
@@ -2571,8 +2671,23 @@
       new MutationObserver(() => applyContent()).observe(document.body, { childList: true, subtree: true, characterData: true });
 
       if (consoleEdit) {
+        // 控制台保存前，请学生预览里的页面调试程序量教师版各页画布的大小（手机照搬用）。
+        const askPreviewToMeasure = () => new Promise((resolve) => {
+          const frame = document.getElementById("studentPreview");
+          if (!frame || !frame.contentWindow) { resolve(null); return; }
+          const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const done = (value) => { window.removeEventListener("message", onMessage); clearTimeout(timer); resolve(value); };
+          const onMessage = (event) => {
+            if (event.source !== frame.contentWindow || !event.data || event.data.type !== "beam-tuner-measured" || event.data.id !== id) return;
+            done(event.data.canvas || null);
+          };
+          const timer = setTimeout(() => done(null), 30000);
+          window.addEventListener("message", onMessage);
+          frame.contentWindow.postMessage({ type: "beam-tuner-measure", id }, "*");
+        });
         tuner = createTuner({
           kind: "console",
+          measureCanvas: askPreviewToMeasure,
           registry: CONSOLE_REGISTRY,
           pickRoot: () => document.body,
           saveFile: (content) => saveTopLevel(content),
@@ -2637,9 +2752,11 @@
         if (tuner) tuner.pageChanged();
       }
       applyContent();
+      fitReplicaCanvas();
     };
     setActiveData(activeData);
     updatePage();
+    window.addEventListener("resize", fitReplicaCanvas);
     new MutationObserver(updatePage).observe(appEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-reveal-step", "hidden"] });
     setInterval(updatePage, 400);
 
@@ -2664,6 +2781,12 @@
           tuner.setOrigin(event.data.origin);
         });
         window.parent.postMessage({ type: "beam-tuner-hello" }, "*");
+        window.addEventListener("message", async (event) => {
+          if (event.source !== window.parent || !event.data || event.data.type !== "beam-tuner-measure") return;
+          let sizes = null;
+          try { sizes = await tuner.measureCanvas(); } catch (_) {}
+          window.parent.postMessage({ type: "beam-tuner-measured", id: event.data.id, canvas: sizes }, "*");
+        });
       }
     } else if (phoneTune) {
       // 手机上的滚动条不占宽度：这里也隐藏滚动条，保证宽度和真手机一样。
@@ -2702,6 +2825,22 @@
     }
   }
 
+  // 量画布：等页码对上、连续两次量到的大小一样（排好了）再记下来。
+  async function settledCanvasSize(key) {
+    let last = null;
+    for (let i = 0; i < 40; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      if (document.body.dataset.beamPage !== key) continue;
+      const canvas = document.querySelector(".force-free-canvas");
+      if (!canvas || !canvas.getClientRects().length) continue;
+      const rect = canvas.getBoundingClientRect();
+      const size = [round(rect.width, 1), round(rect.height, 1)];
+      if (last && last[0] === size[0] && last[1] === size[1]) return size;
+      last = size;
+    }
+    return last;
+  }
+
   function relaySave(content) {
     return new Promise((resolve) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -2738,7 +2877,7 @@
       </div>
       <div class="bh-main">
         <div class="bh-stage"><div class="bh-wrap"><div class="bh-phone"><iframe class="bh-frame" title="学生页（手机尺寸）"></iframe></div></div>
-          <div class="bh-tip">在手机画面里直接点选、拖动；右边窗口调数值。滚轮可以上下滚动手机页面。</div></div>
+          <div class="bh-tip">${PHONE_AUTO ? "可以在手机画面里点按钮翻页；滚轮可以上下滚动手机页面。" : "在手机画面里直接点选、拖动；右边窗口调数值。滚轮可以上下滚动手机页面。"}</div></div>
         <div class="bh-side"></div>
       </div>`;
     const frame = document.querySelector(".bh-frame");
