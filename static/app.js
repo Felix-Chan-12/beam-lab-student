@@ -11,6 +11,8 @@ const teacherToken = searchParams.get("token") || "";
 const studentKey = searchParams.get("key") || "";
 const isPreview = role === "student" && searchParams.get("preview") === "1";
 const isSelfGuidedStudent = offlineMode && role === "student" && !isPreview && offlineRuntime.selfGuided === true;
+// A2 的最后一步：教师端（和它的学生预览）多一步 A2-6，页面框里显示 01 阶段的投票页；学生手机仍是 A2-0～A2-5。
+const A2_LAST_STEP = role === "teacher" || isPreview ? 6 : 5;
 const layoutTeacherToken = searchParams.get("teacher_token") || "";
 const layoutMode = isPreview && (
   searchParams.get("layout") === "1"
@@ -32,7 +34,7 @@ const clientId = localStorage.getItem("beam-client-id") || crypto.randomUUID?.()
 localStorage.setItem("beam-client-id", clientId);
 brandLink.href = location.href;
 
-const stageLabels = ["等待", "初步判断 E", "验证分析 A1", "验证分析 A2"];
+const stageLabels = ["等待", "初步判断 E", "验证分析 A1", "验证分析 A2", "迁移拓展 M"];
 const forceStepHeadings = [
   "先看原结构的受力",
   "切开竖向链杆，用力代替它的作用",
@@ -62,6 +64,7 @@ function customVoteCounts() {
   return counts;
 }
 let lastStage = -1;
+let lastA2VotePage = false;
 let lastVoteFeedback = null;
 let currentState = null;
 let config = null;
@@ -366,6 +369,10 @@ function createOfflineState() {
     vote_comments: [],
     offline_choice: "",
     vote_feedback_visible: false,
+    migration_answers_visible: false,
+    migration_choice: "",
+    migration_comment: "",
+    migration_submitted: false,
   };
 }
 
@@ -387,14 +394,15 @@ function applyOfflineAction(state, action) {
   if (action.type === "reset") return createOfflineState();
   const next = structuredClone(state);
   if (action.type === "set_stage") {
-    next.stage = Math.max(0, Math.min(3, Number(action.stage || 0)));
+    next.stage = Math.max(0, Math.min(4, Number(action.stage || 0)));
     next.stage_started_at = new Date().toISOString();
     if (next.stage === 2) next.force_reveal_step = 0;
     if (next.stage === 3) next.deformation_reveal_step = 0;
+    if (next.stage === 4) next.migration_answers_visible = false; // 进入 M：学生回答先收起
   } else if (action.type === "set_force_reveal") {
     next.force_reveal_step = Math.max(0, Math.min(3, Number(action.step || 0)));
   } else if (action.type === "set_deformation_reveal") {
-    next.deformation_reveal_step = Math.max(0, Math.min(5, Number(action.step || 0)));
+    next.deformation_reveal_step = Math.max(0, Math.min(A2_LAST_STEP, Number(action.step || 0)));
   } else if (action.type === "set_voting") {
     next.voting_open = Boolean(action.open);
     if (action.open) {
@@ -426,6 +434,12 @@ function applyOfflineAction(state, action) {
       const comment = String(action.comment || "").trim();
       next.vote_comments = comment ? [comment] : [];
     }
+  } else if (action.type === "set_migration_answers") {
+    next.migration_answers_visible = Boolean(action.visible);
+  } else if (action.type === "submit_migration" && !next.migration_submitted && ["A", "B", "C"].includes(action.choice)) {
+    next.migration_choice = action.choice;
+    next.migration_comment = String(action.comment || "").trim().slice(0, 80);
+    next.migration_submitted = true;
   } else if (action.type === "observe_force") {
     next.progress.force = Math.max(1, next.progress.force);
   } else if (action.type === "align") {
@@ -479,8 +493,8 @@ function renderWaiting() {
     <h1>已进入课堂</h1><p class="lead" style="margin-inline:auto">请保留本页面。教师发布下一步后，这里会自动解锁，不需要重新扫码。</p></section>`;
 }
 
-function renderVote() {
-  if (currentState.vote_feedback_visible) {
+function renderVote(a2Page = false) {
+  if (currentState.vote_feedback_visible && !a2Page) {
     renderVoteFeedback();
     return;
   }
@@ -534,7 +548,7 @@ function renderVote() {
       item.classList.toggle("selected", selected);
       item.setAttribute("aria-pressed", String(selected));
     });
-    submitVote.disabled = currentState.voting_open === false;
+    submitVote.disabled = !a2Page && currentState.voting_open === false;
   }));
   submitVote.addEventListener("click", async () => {
     if (!selectedVote) return;
@@ -552,7 +566,7 @@ function renderVote() {
       showToast(error.message || "内容未提交");
     }
   });
-  updateVoteAvailability(currentState);
+  updateVoteAvailability(a2Page ? { ...currentState, voting_open: true } : currentState);
 }
 
 function voteFeedbackSummaryHtml(state) {
@@ -729,6 +743,8 @@ function bindDeformationStoryboard() {
   slider.addEventListener('keydown', () => { keyboardInput = true; });
   slider.addEventListener('pointerdown', () => { keyboardInput = false; });
   const refresh = (step = Number(currentState?.deformation_reveal_step || 0)) => {
+    // 教师端（学生预览）进入 A2-5 时，FyB 滑块默认放在 0.375ql；学生手机不变。
+    if (isPreview && step === 5 && lastDeformationRevealStep !== 5) x1 = .375;
     if (step < 4) {
       aiDeformationEnabled = false;
       aiDeformationProgress = null;
@@ -1070,6 +1086,121 @@ function renderMigration() {
     await api({ type: "run_migration" });
     showToast("三处响应已完成独立校核");
   });
+}
+
+// 04 迁移拓展 M「学生回答」：按 A / B / C 各一张卡片。人数只定 B、C，A = 第一次投票（E 投票反馈页）的总人数 − B − C；
+// 每位同学一句想法，卡片开头的「+人数」= 句数；同一选项的几句连成一行，像走马灯一样向左滚动。
+// 下面是默认内容；在版面调试里可以改人数和文字（存在 layout-overrides.js 的 transfer 里）。人数为 0 的选项也显示卡片，写灰色的「暂无回答」。
+const TRANSFER_DEFAULT = {
+  B: 0,
+  C: 4,
+  texts: {
+    A: ["需要增加弹簧的力。", "平衡方程里要多一个弹簧力。"],
+    B: ["B点现在是弹簧，释放约束时要用弹簧力代替 <i>F</i><sub>yB</sub>。"],
+    C: ["B点现在可以下沉，位移不再是0。", "有了弹簧，B点会往下沉，Δ<sub>B</sub> 不再等于 0。", "B点下沉量应等于弹簧压缩量，也就是 <i>F</i><sub>yB</sub>/<i>k</i>。", "B点的位移要和弹簧的压缩量一样大，等于 <i>F</i><sub>yB</sub>/<i>k</i>。"],
+  },
+};
+window.BEAM_TRANSFER_DEFAULT = structuredClone(TRANSFER_DEFAULT);
+const TRANSFER_PLACES = { A: "静力平衡条件", B: "第一次提问", C: "第二次提问" };
+
+function transferAnswers() {
+  const raw = window.BEAM_TRANSFER !== undefined ? window.BEAM_TRANSFER : window.BEAM_LAYOUT_OVERRIDES?.transfer;
+  const data = raw && typeof raw === "object" ? raw : TRANSFER_DEFAULT;
+  const total = Object.values(customVoteCounts() || DEMO_VOTE_FEEDBACK.counts).reduce((a, b) => a + b, 0);
+  const count = value => Math.max(0, Math.round(Number(value)) || 0);
+  const B = Math.min(count(data.B), total);
+  const C = Math.min(count(data.C), total - B);
+  const counts = { A: total - B - C, B, C };
+  return ["A", "B", "C"].map(choice => ({
+    choice,
+    place: TRANSFER_PLACES[choice],
+    count: counts[choice],
+    texts: (Array.isArray(data.texts?.[choice]) ? data.texts[choice] : []).slice(0, counts[choice]).map(text => String(text ?? "").trim()).filter(Boolean),
+  }));
+}
+
+function transferCardsHtml() {
+  const answers = transferAnswers();
+  const digits = Math.max(...answers.map(answer => String(answer.count).length)); // 三张卡片的人数一样宽，右边的字才对齐
+  return answers.map(answer => {
+    const rolling = answer.texts.length > 1;
+    const texts = rolling ? [...answer.texts, ...answer.texts] : answer.texts; // 连写两遍：向左移过一遍的长度正好接上，循环看不出跳动
+    const chars = answer.texts.join("").replace(/<[^>]+>/g, "").length;
+    const time = rolling ? ` style="--roll-time: ${Math.max(6, Math.round((chars + 3 * answer.texts.length) * 0.3))}s"` : ""; // 字数越多走得越久，速度一样
+    const lines = texts.length ? texts.map((text, i) => `<p${i >= answer.texts.length ? ' aria-hidden="true"' : ""}>${text}</p>`).join("") : '<p class="transfer-none">暂无回答</p>';
+    return `<article class="transfer-card" data-transfer-card="${answer.choice}">
+      <span class="transfer-count" style="--count-digits: ${digits}">+${answer.count}</span><span class="transfer-tag">选择 ${answer.choice} · ${answer.place}</span>
+      <div class="transfer-text"><div class="transfer-track${rolling ? " rolling" : ""}"${time}>${lines}</div></div>
+    </article>`;
+  }).join("");
+}
+
+// 版面调试里改了 M 页的人数或文字、或改了第一次投票的人数：回答卡片马上跟着变。
+function refreshTransferCards() {
+  const cards = document.querySelector(".transfer-cards");
+  if (cards) cards.innerHTML = transferCardsHtml();
+}
+window.addEventListener("beam-transfer-changed", refreshTransferCards);
+window.addEventListener("beam-votes-changed", refreshTransferCards);
+
+function renderTransfer() {
+  const phone = isSelfGuidedStudent; // 手机：选、写、提交一次，提交后看到回答；教师投屏：点「显示回答」才出现
+  app.innerHTML = `<section class="panel transfer-story">
+    <header class="transfer-head"><h1>考虑立柱压缩，哪一处求解条件需要调整？</h1></header>
+    <div class="transfer-body">
+      <div class="transfer-ask"><h3>选择位置 + 说明修改</h3>
+        <div class="options transfer-options">
+          <button class="option" data-transfer-choice="A" aria-pressed="false"><strong>A</strong><span>静力平衡条件</span></button>
+          <button class="option" data-transfer-choice="B" aria-pressed="false"><strong>B</strong><span>第一次提问<small>释放约束，用 <i>F</i><sub>yB</sub> 代替</small></span></button>
+          <button class="option" data-transfer-choice="C" aria-pressed="false"><strong>C</strong><span>第二次提问<small>补充位移条件</small></span></button>
+        </div>
+        <label class="transfer-label" for="transferIdea">你准备怎样修改？</label>
+        <div class="vote-submit-row${phone ? "" : " transfer-idea-only"}"><input id="transferIdea" type="text" maxlength="80" placeholder="写一句修改想法……"/>${phone ? '<button class="primary" id="submitTransfer" disabled>提交</button>' : ""}</div>
+      </div>
+      <div class="transfer-answers"><div class="transfer-answers-head"><h3>学生回答</h3></div>
+        <p class="hint transfer-waiting">${phone ? "提交后可以看到同学们的回答。" : "等待学生提交……"}</p>
+        <div class="transfer-cards" hidden>${transferCardsHtml()}</div>
+      </div>
+    </div>
+  </section>`;
+  let choice = phone ? currentState.migration_choice || "" : "";
+  const options = document.querySelectorAll("[data-transfer-choice]");
+  const idea = document.querySelector("#transferIdea");
+  const submit = document.querySelector("#submitTransfer");
+  const mark = () => options.forEach(button => {
+    const selected = button.dataset.transferChoice === choice;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  options.forEach(button => button.addEventListener("click", () => {
+    choice = button.dataset.transferChoice;
+    mark();
+    if (submit) submit.disabled = false;
+  }));
+  submit?.addEventListener("click", async () => {
+    if (!choice || currentState.migration_submitted) return;
+    await api({ type: "submit_migration", choice, comment: idea.value });
+    updateTransferAnswers(currentState);
+    showToast("已提交，看看同学们的回答");
+  });
+  if (phone && currentState.migration_submitted) idea.value = currentState.migration_comment || "";
+  mark();
+  updateTransferAnswers(currentState);
+}
+
+function updateTransferAnswers(state) {
+  const cards = document.querySelector(".transfer-cards");
+  if (!cards) return;
+  const phone = isSelfGuidedStudent;
+  const visible = phone ? Boolean(state.migration_submitted) : Boolean(state.migration_answers_visible);
+  if (cards.hidden === visible) cards.hidden = !visible;
+  document.querySelector(".transfer-waiting").hidden = visible;
+  if (phone && state.migration_submitted) {
+    document.querySelectorAll("[data-transfer-choice]").forEach(button => { button.disabled = true; });
+    document.querySelector("#transferIdea").disabled = true;
+    const submit = document.querySelector("#submitTransfer");
+    if (submit) { submit.disabled = true; submit.textContent = "已提交"; }
+  }
 }
 
 function renderComplete() {
@@ -1849,17 +1980,17 @@ function voteBars(counts = {agree:0,doubt:0,unsure:0}) {
 async function setTeacherStage(stage, returnToLast = false) {
   await api({ type: "set_stage", stage });
   if (returnToLast && stage === 2) await api({ type: "set_force_reveal", step: 3 });
-  if (returnToLast && stage === 3) await api({ type: "set_deformation_reveal", step: 5 });
+  if (returnToLast && stage === 3) await api({ type: "set_deformation_reveal", step: A2_LAST_STEP });
 }
 
 function renderTeacher(state) {
-  const descriptions = ["学生扫码后等待", "以判断暴露初始理解", "以受力数验辨析平衡候选", "以位移协调重构理解"];
+  const descriptions = ["学生扫码后等待", "以判断暴露初始理解", "以受力数验辨析平衡候选", "以位移协调重构理解", "以迁移检验巩固理解"];
   if (!document.querySelector("#teacherCockpit")) {
-    const roadmap = [0,1,2,3].map(stage => `<button class="roadmap-step" data-stage="${stage}"><span>0${stage}</span>${stageLabels[stage]}</button>`).join("");
+    const roadmap = [0,1,2,3,4].map(stage => `<button class="roadmap-step" data-stage="${stage}"><span>0${stage}</span>${stageLabels[stage]}</button>`).join("");
     app.innerHTML = `<section class="teacher-cockpit" id="teacherCockpit">
       <div class="teacher-command-bar panel">
         <div><p class="eyebrow">教师控制台 · 单页运行</p><h2 id="teacherStageTitle"></h2><p class="hint" id="teacherStageDescription"></p></div>
-        <div class="stage-nav"><button class="secondary" id="previousStage">上一步</button><button class="primary" id="nextStage">发布下一步</button><button class="vote-control end-vote" id="endVote">结束选择</button><button class="vote-control reopen-vote" id="reopenVote">重新开放</button><div class="force-reveal-grid" id="forceRevealGrid" aria-label="验证分析 A1 呈现进度">${[1,2,3,4,5].map(step => `<button type="button" data-force-reveal-step="${step}" aria-label="呈现到第${step}项">${step}</button>`).join("")}</div><button class="reveal-control" id="forceRevealNext">呈现下一项</button><button class="secondary" id="forceRevealReset">重置呈现</button><button class="secondary" id="focusPreview">放大学生预览</button>${layoutToolsEnabled ? `<button class="secondary" id="openLayoutEditor">版面调试</button>` : ""}</div>
+        <div class="stage-nav"><button class="secondary" id="previousStage">上一步</button><button class="primary" id="nextStage">发布下一步</button><button class="vote-control end-vote" id="endVote">结束选择</button><button class="vote-control reopen-vote" id="reopenVote">重新开放</button><button class="vote-control" id="showAnswers">显示回答</button><button class="vote-control" id="hideAnswers">收起回答</button><div class="force-reveal-grid" id="forceRevealGrid" aria-label="验证分析 A1 呈现进度">${[1,2,3,4,5,6].map(step => `<button type="button" data-force-reveal-step="${step}" aria-label="呈现到第${step}项">${step}</button>`).join("")}</div><button class="reveal-control" id="forceRevealNext">呈现下一项</button><button class="secondary" id="forceRevealReset">重置呈现</button><button class="secondary" id="focusPreview">放大学生预览</button>${layoutToolsEnabled ? `<button class="secondary" id="openLayoutEditor">版面调试</button>` : ""}</div>
         <span class="frame-guard frame-guard-left" aria-hidden="true"></span><span class="frame-guard frame-guard-right" aria-hidden="true"></span>
       </div>
       <div class="stage-roadmap">${roadmap}</div>
@@ -1876,7 +2007,9 @@ function renderTeacher(state) {
     document.body.classList.toggle("beam-frame", searchParams.get("frame") !== "0");
     document.querySelectorAll(".roadmap-step[data-stage]").forEach(button => button.addEventListener("click", () => setTeacherStage(Number(button.dataset.stage))));
     document.querySelector("#previousStage").addEventListener("click", () => setTeacherStage(Math.max(0,currentState.stage-1), true));
-    document.querySelector("#nextStage").addEventListener("click", () => setTeacherStage(Math.min(3,currentState.stage+1)));
+    document.querySelector("#nextStage").addEventListener("click", () => setTeacherStage(Math.min(4,currentState.stage+1)));
+    document.querySelector("#showAnswers").addEventListener("click", () => api({type:"set_migration_answers",visible:true}));
+    document.querySelector("#hideAnswers").addEventListener("click", () => api({type:"set_migration_answers",visible:false}));
     document.querySelector("#endVote").addEventListener("click", () => api({type:"show_vote_feedback"}));
     document.querySelector("#reopenVote").addEventListener("click", () => api({type:"set_voting",open:true}));
     document.querySelector("#forceRevealNext").addEventListener("click", () => {
@@ -1887,7 +2020,7 @@ function renderTeacher(state) {
           : (Number(currentState.force_reveal_step) === 1 ? 1 : 0);
         return api({
           type: supportsDeformationReveal ? "set_deformation_reveal" : "set_force_reveal",
-          step: Math.min(5, currentStep + 1),
+          step: Math.min(A2_LAST_STEP, currentStep + 1),
         });
       }
       return api({type:"set_force_reveal",step:Math.min(3,(currentState.force_reveal_step || 0)+1)});
@@ -1931,13 +2064,19 @@ function renderTeacher(state) {
   reopenVote.hidden = state.stage !== 1;
   endVote.disabled = state.voting_open === false;
   reopenVote.disabled = state.voting_open !== false;
+  const showAnswers = document.querySelector("#showAnswers");
+  const hideAnswers = document.querySelector("#hideAnswers");
+  showAnswers.hidden = state.stage !== 4;
+  hideAnswers.hidden = state.stage !== 4;
+  showAnswers.disabled = Boolean(state.migration_answers_visible);
+  hideAnswers.disabled = !state.migration_answers_visible;
   const forceRevealNext = document.querySelector("#forceRevealNext");
   const forceRevealReset = document.querySelector("#forceRevealReset");
   const forceRevealGrid = document.querySelector("#forceRevealGrid");
   const revealStep = state.stage === 3
     ? (state.deformation_reveal_step == null ? (Number(state.force_reveal_step) === 1 ? 1 : 0) : Number(state.deformation_reveal_step || 0))
     : (state.force_reveal_step || 0);
-  const revealMax = state.stage === 3 ? 5 : 3;
+  const revealMax = state.stage === 3 ? A2_LAST_STEP : 3;
   forceRevealGrid.hidden = state.stage !== 2 && state.stage !== 3;
   forceRevealGrid.setAttribute("aria-label", state.stage === 3 ? "验证分析 A2 呈现进度" : "验证分析 A1 呈现进度");
   forceRevealGrid.querySelectorAll("[data-force-reveal-step]").forEach(button => {
@@ -1954,12 +2093,18 @@ function renderTeacher(state) {
   forceRevealReset.disabled = revealStep === 0;
   forceRevealNext.textContent = `呈现下一项 ${revealStep}/${revealMax}`;
   const nextButton = document.querySelector("#nextStage");
-  nextButton.disabled = state.stage === 3;
-  nextButton.textContent = state.stage === 3 ? "完成探究 · 返回PPT" : `下一步：${stageLabels[state.stage + 1]}`;
+  nextButton.disabled = state.stage === 4;
+  nextButton.textContent = state.stage === 4 ? "返回PPT" : `下一步：${stageLabels[state.stage + 1]}`;
+}
+
+// A2-6（只在教师端的学生预览里）：页面框里显示 01 阶段的投票页。
+function isA2VotePage(state = currentState) {
+  return isPreview && Number(state?.stage) === 3 && Number(state?.deformation_reveal_step || 0) === 6;
 }
 
 function renderStudent() {
-  [renderWaiting, renderVote, renderForce, renderDeformation][Math.min(currentState.stage, 3)]();
+  if (isA2VotePage()) renderVote(true);
+  else [renderWaiting, renderVote, renderForce, renderDeformation, renderTransfer][Math.min(currentState.stage, 4)]();
   mountSelfGuidedNavigation();
 }
 
@@ -1973,7 +2118,7 @@ function selfGuidedNavigationHtml() {
   const stage = Number(currentState.stage || 1);
   const step = selfGuidedStep(stage);
   const substepMax = stage === 2 ? 3 : stage === 3 ? 5 : 0;
-  const stageButtons = [1, 2, 3].map(number => `
+  const stageButtons = [1, 2, 3, 4].map(number => `
     <button type="button" class="self-stage-button${number === stage ? " current" : ""}" data-self-stage="${number}">
       <span>0${number}</span>${stageLabels[number]}
     </button>`).join("");
@@ -1983,9 +2128,9 @@ function selfGuidedNavigationHtml() {
       const number = index + 1;
       return `<button type="button" class="${number <= step ? "active" : ""}" data-self-step="${number}" aria-label="进入0${stage}第${number}步" aria-pressed="${number === step}">${number}</button>`;
     }).join("")}</div>
-  </div>` : `<p class="self-guide-hint">提交判断后，可进入02逐步观察。</p>`;
+  </div>` : `<p class="self-guide-hint">${stage === 4 ? "选一个位置、写一句修改想法，提交后查看同学们的回答。" : "提交判断后，可进入02逐步观察。"}</p>`;
   const atStart = stage === 1;
-  const atEnd = stage === 3 && step === 5;
+  const atEnd = stage === 4;
   return `<nav class="self-guided-nav panel" aria-label="学生自主探究导航">
     <div class="self-stage-roadmap">${stageButtons}</div>
     <div class="self-step-control">${substeps}<div class="self-nav-actions">
@@ -1996,7 +2141,7 @@ function selfGuidedNavigationHtml() {
 }
 
 async function setSelfGuidedPosition(targetStage, targetStep = 0) {
-  const stage = Math.max(1, Math.min(3, Number(targetStage || 1)));
+  const stage = Math.max(1, Math.min(4, Number(targetStage || 1)));
   const stageChanged = stage !== currentState.stage;
   if (stageChanged) await api({ type: "set_stage", stage });
   if (stage === 2) await api({ type: "set_force_reveal", step: Math.max(0, Math.min(3, Number(targetStep || 0))) });
@@ -2027,6 +2172,7 @@ function mountSelfGuidedNavigation() {
   document.querySelector('[data-self-nav="previous"]')?.addEventListener("click", () => {
     const stage = currentState.stage;
     const step = selfGuidedStep(stage);
+    if (stage === 4) return setSelfGuidedPosition(3, 5);
     if (stage === 3 && step > 0) return setSelfGuidedPosition(3, step - 1);
     if (stage === 3) return setSelfGuidedPosition(2, 3);
     if (stage === 2 && step > 0) return setSelfGuidedPosition(2, step - 1);
@@ -2039,6 +2185,7 @@ function mountSelfGuidedNavigation() {
     if (stage === 2 && step < 3) return setSelfGuidedPosition(2, step + 1);
     if (stage === 2) return setSelfGuidedPosition(3, 0);
     if (stage === 3 && step < 5) return setSelfGuidedPosition(3, step + 1);
+    if (stage === 3) return setSelfGuidedPosition(4, 0);
   });
 }
 
@@ -2051,7 +2198,8 @@ async function tick() {
         : { ...loadedState, stage: 2, force_reveal_step: 5 }
       : loadedState;
     currentState = state;
-    document.body.dataset.stage = String(state.stage);
+    // A2-6 的页面框里是 01 阶段的投票页：按 01 阶段的样子排版。
+    document.body.dataset.stage = String(isA2VotePage(state) ? 1 : state.stage);
     if (isPreview && state.stage !== lastStage) {
       previewSeconds = 0;
       previewStartedAt = Date.now();
@@ -2064,12 +2212,14 @@ async function tick() {
       sessionPill.textContent = `${role === "teacher" ? "教师端" : "学生端"} · ${state.session_id}`;
     }
     if (role === "teacher") renderTeacher(state);
-    else if (state.stage !== lastStage) renderStudent();
+    else if (state.stage !== lastStage || isA2VotePage(state) !== lastA2VotePage) renderStudent();
     else if (state.stage === 1 && Boolean(state.vote_feedback_visible) !== lastVoteFeedback) renderStudent();
     else if (state.stage === 1) updateVoteAvailability(state);
     else if (state.stage === 2) updateForceReveal(state);
     else if (state.stage === 3) updateDeformationReveal(state);
+    else if (state.stage === 4) updateTransferAnswers(state);
     lastStage = state.stage;
+    lastA2VotePage = isA2VotePage(state);
     lastVoteFeedback = Boolean(state.vote_feedback_visible);
   } catch (error) {
     sessionPill.textContent = "正在重连";

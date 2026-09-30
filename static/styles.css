@@ -184,7 +184,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .force-reveal-grid button.active { border-color: #25a66a; background: #25a66a; color: white; box-shadow: 0 4px 10px rgba(37,166,106,.18); }
 .self-guided-nav { display: grid; gap: 12px; margin-bottom: 14px; padding: 14px 18px; }
 .self-guided-page main > .steps { display: none; }
-.self-stage-roadmap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.self-stage-roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .self-stage-button { border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--muted); padding: 8px 10px; font-size: 12px; }
 .self-stage-button span { display: inline-block; margin-right: 8px; font: 800 15px/1 Georgia, serif; }
 .self-stage-button.current { color: var(--ink); border-color: var(--orange); background: #fff3eb; box-shadow: 0 5px 14px rgba(215,99,34,.1); }
@@ -206,7 +206,7 @@ input[type="range"] { width: 100%; accent-color: var(--orange); }
 .student-feedback-comments p { margin: 9px 0; padding: 13px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .vote-status { margin: 10px 0 0; color: var(--blue); font-size: 13px; font-weight: 700; }
 .vote-status.closed { color: var(--orange-dark); }
-.stage-roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.stage-roadmap { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .roadmap-step { border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.86); color: var(--muted); padding: 10px 8px; font-size: 12px; }
 .roadmap-step span { display: block; font: 800 16px/1 Georgia, serif; margin-bottom: 4px; }
 .roadmap-step.current { color: var(--ink); border-color: var(--orange); background: #fff3eb; box-shadow: 0 6px 18px rgba(215,99,34,.12); }
@@ -700,4 +700,66 @@ body.beam-frame #openLayoutEditor { right: calc(var(--fr-guard-b) + 164px); }
 }
 @media (max-width: 1500px) {
   body.beam-frame #teacherStageTitle .stage-name { display: none; }
+}
+/* A2 多了第 6 步（A2-6，只在教师端）：6 个步骤键放进原来 5 个键的宽度里，整排宽度不变，阶段名、放大预览等按键的位置都不动。 */
+body.beam-frame #forceRevealGrid:has(> [data-force-reveal-step="6"]:not([hidden])) { gap: 6px; }
+body.beam-frame #teacherCockpit #forceRevealGrid:has(> [data-force-reveal-step="6"]:not([hidden])) > button:not([hidden]) { width: calc((5 * var(--fr-key) + 2px) / 6); min-width: 0; padding: 0; }
+#forceRevealGrid:has(> [data-force-reveal-step="6"]:not([hidden])) { grid-template-columns: repeat(6, 32px); }
+/* 04 迁移拓展 M：银色面板上「显示回答」「收起回答」排在上一步后面（和 E 阶段的结束选择、重新开放同一位置）。 */
+body.beam-frame #showAnswers { order: 4; }
+body.beam-frame #hideAnswers { order: 5; }
+/* 学生手机导航：01–04 四个阶段排成两行两列 */
+@media (max-width: 600px) { .self-stage-roadmap { grid-template-columns: repeat(2, 1fr); } }
+/* 04 迁移拓展 M 页：上面题目，下面左边选择与修改想法、右边学生回答（预设） */
+body:not(.layout-mode) :is(.transfer-options small, .transfer-options small *, .transfer-tag) { font-size: var(--text-small) !important; }
+.transfer-story { display: grid; gap: 20px; }
+.transfer-head { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.transfer-head h1 { margin: 0; line-height: 1.4; }
+.transfer-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 28px; align-items: start; }
+.transfer-body h3 { margin: 0 0 12px; }
+.transfer-options { margin-top: 0; }
+.transfer-options .option { display: flex; align-items: center; gap: 20px; }
+.transfer-options .option strong { margin: 0; color: var(--blue); }
+.transfer-options .option small { display: block; margin-top: 2px; color: var(--muted); }
+.transfer-label { display: block; margin: 18px 0 8px; font-weight: 800; }
+.transfer-ask .vote-submit-row { margin-top: 0; }
+.transfer-ask .vote-submit-row.transfer-idea-only { grid-template-columns: minmax(0, 1fr); }
+.transfer-answers { padding-left: 28px; border-left: 1px solid var(--line); }
+.transfer-waiting { margin: 24px 0; }
+.transfer-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; } /* 走马灯的长文字不能把卡片撑宽 */
+.transfer-cards[hidden] { display: none; }
+/* 每张卡片：开头是「+人数」（大字，高度占右边两行），右边上行「选择 …」、下行回答 */
+.transfer-card { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 20px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+.transfer-tag { grid-column: 2; grid-row: 1; justify-self: start; display: inline-block; padding: 3px 12px; border-radius: 999px; background: var(--blue-soft); color: var(--blue); font-weight: 800; }
+.transfer-count { grid-column: 1; grid-row: 1 / span 2; min-width: calc(var(--count-digits, 1) * 1ch + 1.2ch); line-height: 0.8; text-align: center; color: var(--orange-dark); font-weight: 800; font-variant-numeric: tabular-nums; }
+body:not(.layout-mode) .transfer-card .transfer-count { font-size: calc((var(--text-small) + var(--text-body)) * 2) !important; }
+.transfer-text { grid-column: 2; grid-row: 2; margin-top: 8px; overflow: hidden; }
+.transfer-track > p { margin: 0; line-height: 1.5; }
+.transfer-track > p.transfer-none { color: var(--muted); }
+/* 同一个意思的几种写法连成一行，像走马灯一样一个字一个字向左走，从左边出去、再从右边进来 */
+.transfer-track.rolling { display: flex; width: max-content; animation: transfer-marquee var(--roll-time, 12s) linear infinite; }
+.transfer-track.rolling > p { flex: none; padding-right: 3em; white-space: nowrap; }
+@keyframes transfer-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (max-width: 780px) {
+  .transfer-body { grid-template-columns: minmax(0, 1fr); }
+  .transfer-answers { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+}
+/* 手机上卡片窄：「+人数」小一点、间距紧一点，右边「选择 …」才能放在一行 */
+@media (max-width: 600px) {
+  .transfer-card { column-gap: 12px; padding: 12px; }
+  body:not(.layout-mode) .transfer-card .transfer-count { font-size: calc((var(--text-small) + var(--text-body)) * 1.7) !important; }
+}
+/* M 页字号和 A2-6（E 投票页）对齐（投屏宽屏档）：题目 150%、两栏标题 140%、选项和回答 160%、「你准备怎样修改？」和输入框 150%。
+   在版面调试里再调文字大小，是在这个基础上放大缩小。手机上不变。 */
+@media (min-width: 1300px) {
+  body:not(.layout-mode) :is(.transfer-head h1, .transfer-head h1 *) { font-size: calc(var(--text-title) * 1.5) !important; }
+  body:not(.layout-mode) :is(.transfer-body h3, .transfer-body h3 *) { font-size: calc(var(--text-title) * 1.4) !important; }
+  body:not(.layout-mode) .transfer-options .option :is(strong, span) { font-size: calc(var(--text-body) * 1.6) !important; }
+  body:not(.layout-mode) .transfer-options .option :is(small, small *, sub, sup) { font-size: calc(var(--text-small) * 1.6) !important; }
+  body:not(.layout-mode) :is(.transfer-label, #transferIdea, #submitTransfer) { font-size: calc(var(--text-body) * 1.5) !important; }
+  body:not(.layout-mode) .transfer-card :is(.transfer-track p, .transfer-track p *) { font-size: calc(var(--text-body) * 1.6) !important; }
+  body:not(.layout-mode) .transfer-card .transfer-track p :is(sub, sup) { font-size: calc(var(--text-small) * 1.6) !important; }
+  body:not(.layout-mode) .transfer-card .transfer-tag { font-size: calc(var(--text-small) * 1.6) !important; }
+  body:not(.layout-mode) .transfer-card .transfer-count { font-size: calc((var(--text-small) + var(--text-body)) * 1.6 * 2) !important; }
+  body:not(.layout-mode) .transfer-answers .transfer-waiting { font-size: calc(var(--text-small) * 1.6) !important; }
 }

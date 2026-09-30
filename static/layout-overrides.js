@@ -1,8 +1,9 @@
-// BEAM LAB 版面调试保存的配置（由「版面调试」窗口自动生成，2026-09-29 14:36:35）
+// BEAM LAB 版面调试保存的配置（由「版面调试」窗口自动生成，2026-10-01 06:43:43）
 // 放在 static 文件夹里，teacher.html 和 student.html 会自动读取。
 // "wide" "medium" "narrow" 是教师版（按宽度分档），"phone" 是学生页的手机版面。
 // 想恢复默认版面：把 "regimes" 后面的内容改成 {}，或在版面调试里重置后再保存。
 // "votes" 是 E 投票反馈页的人数（agree = A、doubt = B、unsure = C），在版面调试里选中「人数方块」可以改。
+// "transfer" 是 M 页「学生回答」：B、C 的人数（A = 第一次投票的总人数 − B − C）和每位同学的想法，在版面调试里选中 M 页右栏可以改。
 // "canvas" 是教师版各页画布的大小，手机照搬教师版时用；保存时自动量，不用改。
 window.BEAM_LAYOUT_OVERRIDES = {
   "canvas": {
@@ -1621,6 +1622,16 @@ window.BEAM_LAYOUT_OVERRIDES = {
           "sel": "#app .symbol-notes"
         }
       },
+      "M": {
+        "tfCount": {
+          "kind": "box",
+          "label": "M：人数（+1、+2）",
+          "props": {
+            "text": 75
+          },
+          "sel": "#app .transfer-count"
+        }
+      },
       "WAIT": {
         "waitEyebrow": {
           "kind": "text",
@@ -1665,7 +1676,27 @@ window.BEAM_LAYOUT_OVERRIDES = {
       }
     }
   },
-  "savedAt": "2026-09-29 14:36:35",
+  "savedAt": "2026-10-01 06:43:43",
+  "transfer": {
+    "B": 0,
+    "C": 5,
+    "texts": {
+      "A": [
+        "需要增加弹簧的力。",
+        "平衡方程里要多一个弹簧力。"
+      ],
+      "B": [
+        "B点现在是弹簧，释放约束时要用弹簧力代替 <i>F</i><sub>yB</sub>。"
+      ],
+      "C": [
+        "B点现在可以下沉，位移不再是0。",
+        "有了弹簧，B点会往下沉，Δ<sub>B</sub> 不再等于 0。",
+        "B点不能再设位移为零。",
+        "B点下沉量应等于弹簧压缩量，也就是 <i>F</i><sub>yB</sub>/<i>k</i>。",
+        "B点的位移要和弹簧的压缩量一样大，等于 <i>F</i><sub>yB</sub>/<i>k</i>。"
+      ]
+    }
+  },
   "version": 3,
   "votes": {
     "agree": 2,

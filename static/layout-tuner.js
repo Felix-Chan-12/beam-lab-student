@@ -10,7 +10,7 @@
  *   student.html          学生页：套用保存的版面。手机上（宽度 <700px）先继承教师版宽屏档的画布排布，再套用手机版面。
  *   student-edit.html     （或 student.html?edit=1）在电脑上按手机尺寸调 student.html 的手机版面。
  *
- * 页面内容的调整按「页」保存（00 等待、01 E、01 E 反馈、A1-0…A1-3、A2-0…A2-5），可选「只改本页 / 本阶段通用 /
+ * 页面内容的调整按「页」保存（00 等待、01 E、01 E 反馈、A1-0…A1-3、A2-0…A2-5、04 M），可选「只改本页 / 本阶段通用 /
  * 所有页通用」；并按宽度分档（宽屏 ≥1300px、中屏 1000–1299px、窄屏 700–999px；手机 <700px 只对 student.html）。
  */
 (function () {
@@ -52,6 +52,11 @@
   // 选中「统计区」「人数方块」「票数条」时，窗口里多出三行人数。
   const VOTE_PROPS = { voteA: "agree", voteB: "doubt", voteC: "unsure" };
   const VOTE_DEFS = new Set(["fbSummary", "fbTotal", "fbBars"]);
+  // M 页「学生回答」：只调 B、C 的人数，A = 第一次投票（E 投票反馈页）的总人数 − B − C；每位同学一句想法（句数 = 人数）。
+  // 存在配置文件的 transfer 里（不分宽窄档、不分页），教师版和学生页都用。选中 M 页右栏（学生回答）里的元素时，窗口里多出人数和文字。
+  const TRANSFER_PROPS = { tfCountB: "B", tfCountC: "C" };
+  const TRANSFER_DEFS = new Set(["tfAnswers", "tfAnswersTitle", "tfWaiting", "tfCards", "tfCard", "tfTag", "tfCount", "tfText"]);
+  const TRANSFER_CHOICES = [["A", "静力平衡条件"], ["B", "第一次提问"], ["C", "第二次提问"]];
 
   const REGIMES = {
     wide: { label: "宽屏", range: "≥1300px", mq: "(min-width: 1300px)" },
@@ -90,6 +95,7 @@
     ["A2-3", "03 A2-3 FyB 单独作用"],
     ["A2-4", "03 A2-4 叠加 · AI 辅助计算"],
     ["A2-5", "03 A2-5 B 点位移表达式"],
+    ["M", "04 M 迁移拓展"],
   ];
   const PHONE_PAGES = PAGES.filter(([key]) => key !== "WAIT"); // 学生页没有「等待」页
   // 「本阶段通用」的分组：E（投票、反馈两页）、A1（四步）、A2（六步）。
@@ -124,6 +130,8 @@
     voteA: { label: "A 人数", unit: "人", min: 0, max: 200, step: 1, digits: 0 },
     voteB: { label: "B 人数", unit: "人", min: 0, max: 200, step: 1, digits: 0 },
     voteC: { label: "C 人数", unit: "人", min: 0, max: 200, step: 1, digits: 0 },
+    tfCountB: { label: "B 人数", unit: "人", min: 0, max: 200, step: 1, digits: 0 },
+    tfCountC: { label: "C 人数", unit: "人", min: 0, max: 200, step: 1, digits: 0 },
     // 统一坐标（界面上显示的数）：原点在页面左上角，单位 px。实际存储见下面。
     x: { label: "X 坐标", unit: "px", min: 0, max: 2000, step: 1, digits: 0, virtual: true },
     y: { label: "Y 坐标", unit: "px", min: 0, max: 2400, step: 1, digits: 0, virtual: true },
@@ -270,6 +278,23 @@
     { key: "trendLabel", label: "「变形趋势示意」", sel: "#app .deformation-trend-label", kind: "abstext" },
     { key: "zeroLabel", label: "「ΔB = 0」", sel: "#app .deformation-zero-label", kind: "abstext" },
     { key: "endpointLabel", label: "端点「ΔB」标注", sel: "#app .endpoint-label", kind: "label" },
+    { key: "tfStory", label: "M：整块面板", sel: "#app > .transfer-story", kind: "panel" },
+    { key: "tfHead", label: "M：题目区", sel: "#app .transfer-head", kind: "group" },
+    { key: "tfTitle", label: "M：题目", sel: "#app .transfer-head h1", kind: "text" },
+    { key: "tfBody", label: "M：左右两栏", sel: "#app .transfer-body", kind: "group" },
+    { key: "tfAsk", label: "M：左栏（选择与修改）", sel: "#app .transfer-ask", kind: "group" },
+    { key: "tfAskTitle", label: "M：「选择位置 + 说明修改」", sel: "#app .transfer-ask > h3", kind: "text" },
+    { key: "tfLabel", label: "M：「你准备怎样修改？」", sel: "#app .transfer-label", kind: "text" },
+    { key: "tfIdea", label: "M：修改想法输入框", sel: "#app #transferIdea", kind: "box" },
+    { key: "tfSubmit", label: "M：提交按钮（手机）", sel: "#app #submitTransfer", kind: "box" },
+    { key: "tfAnswers", label: "M：右栏（学生回答）", sel: "#app .transfer-answers", kind: "group" },
+    { key: "tfAnswersTitle", label: "M：「学生回答」", sel: "#app .transfer-answers-head > h3", kind: "text" },
+    { key: "tfWaiting", label: "M：「等待学生提交」", sel: "#app .transfer-waiting", kind: "text" },
+    { key: "tfCards", label: "M：回答卡片组", sel: "#app .transfer-cards", kind: "group" },
+    { key: "tfCard", label: "M：回答卡片（全部）", sel: "#app .transfer-card", kind: "box" },
+    { key: "tfTag", label: "M：卡片上的「选择 …」", sel: "#app .transfer-tag", kind: "box" },
+    { key: "tfCount", label: "M：人数（+1、+2）", sel: "#app .transfer-count", kind: "box" },
+    { key: "tfText", label: "M：回答文字（滚动）", sel: "#app .transfer-text", kind: "group" },
     { key: "controls", label: "右侧控制栏", sel: "#app .force-controls", kind: "group" },
     { key: "controlCard", label: "滑块卡片", sel: "#app .force-control", kind: "panel" },
     { key: "aiCard", label: "AI 辅助计算卡片", sel: "#app .ai-deformation-card", kind: "panel" },
@@ -293,7 +318,7 @@
     { key: "s:brandName", label: "「BEAM LAB」字样", sel: "body > .topbar .brand strong", kind: "text" },
     { key: "s:pill", label: "右上状态标签", sel: "#sessionPill", kind: "box" },
     { key: "s:nav", label: "导航面板", sel: "#app > .self-guided-nav", kind: "panel" },
-    { key: "s:navStages", label: "01–03 阶段按钮组", sel: "#app .self-stage-roadmap", kind: "group" },
+    { key: "s:navStages", label: "01–04 阶段按钮组", sel: "#app .self-stage-roadmap", kind: "group" },
     { key: "s:navStage", label: "阶段按钮（全部）", sel: "#app .self-stage-button", kind: "box" },
     { key: "s:navControl", label: "步骤与翻页行", sel: "#app .self-step-control", kind: "group" },
     { key: "s:navSteps", label: "步骤区", sel: "#app .self-substeps", kind: "group" },
@@ -324,11 +349,13 @@
     { key: "c:next", label: "「下一步」", sel: "#nextStage", kind: "box", shared: true },
     { key: "c:endVote", label: "「结束选择」", sel: "#endVote", kind: "box", shared: true },
     { key: "c:reopenVote", label: "「重新开放」", sel: "#reopenVote", kind: "box", shared: true },
+    { key: "c:showAnswers", label: "「显示回答」", sel: "#showAnswers", kind: "box", shared: true },
+    { key: "c:hideAnswers", label: "「收起回答」", sel: "#hideAnswers", kind: "box", shared: true },
     { key: "c:revealGrid", label: "进度格", sel: "#forceRevealGrid", kind: "group", shared: true },
     { key: "c:revealReset", label: "「重置呈现」", sel: "#forceRevealReset", kind: "box", shared: true },
     { key: "c:focusBtn", label: "「放大学生预览 / 返回控制台」", sel: "#focusPreview", kind: "box", shared: true },
     { key: "c:tuneBtn", label: "「版面调试」按钮", sel: "#openLayoutEditor", kind: "box", shared: true },
-    { key: "c:roadmap", label: "阶段路线（00–03）", sel: "#teacherCockpit > .stage-roadmap", kind: "group" },
+    { key: "c:roadmap", label: "阶段路线（00–04）", sel: "#teacherCockpit > .stage-roadmap", kind: "group" },
     { key: "c:roadSteps", label: "路线格（全部）", sel: "#teacherCockpit .stage-roadmap > .roadmap-step", kind: "box" },
     { key: "c:workspace", label: "下方工作区（左右比例）", sel: "#teacherCockpit > .teacher-workspace", kind: "hero" },
     { key: "c:entry", label: "学生入口面板", sel: "#teacherCockpit .entry-compact", kind: "panel" },
@@ -348,10 +375,11 @@
     "[data-ai-deformation-status]", "[data-ai-deformation-button]", "#voteStatus",
     "#teacherStageTitle", "#nextStage", "#focusPreview", "#forceRevealNext", "#sessionPill", ".url",
     ".student-feedback-comments", '[data-self-nav="next"]',
+    ".transfer-text", ".transfer-count", ".transfer-waiting", "#submitTransfer",
   ].join(",");
   const INTERACTIVE_SEL = "button, input, select, textarea, a, iframe, [data-vote]";
 
-  const ANCHOR_ATTRS = ["data-element-slot", "data-force-label-slot", "data-vote", "data-special-candidate", "data-force-channel", "data-force-reveal-step", "data-stage", "data-self-nav", "data-self-stage", "data-self-step"];
+  const ANCHOR_ATTRS = ["data-element-slot", "data-force-label-slot", "data-vote", "data-special-candidate", "data-force-channel", "data-force-reveal-step", "data-stage", "data-self-nav", "data-self-stage", "data-self-step", "data-transfer-choice", "data-transfer-card"];
   const FLAG_ATTRS = ["data-force-top-caption", "data-force-bottom-caption", "data-structure-caption", "data-deformation-divider", "data-force-transition-arrow", "data-force-compare-decoration", "data-force-readouts", "data-special-candidates", "data-ai-deformation-card", "data-ai-deformation-button", "data-ai-deformation-status", "data-deformation-formula", "data-deformation-trend-label", "data-deformation-zero-label", "data-force-value", "data-force-slider"];
   const SKIP_CLASS = /^(selected|active|current|show|closed|collapsed|math-variable|zero|preview-focus)$/;
   const INLINE_TAGS = new Set(["I", "B", "EM", "SUB", "SUP", "BR"]);
@@ -424,6 +452,20 @@
     }
     return out;
   }
+  // M 页学生回答：{ B: 人数, C: 人数, texts: { A: [每人一句…], B: […], C: […] } }，不对就不用。
+  function normTransfer(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const count = (value) => { const n = Math.round(Number(value)); return Number.isFinite(n) && n >= 0 ? Math.min(n, 999) : null; };
+    const B = count(raw.B);
+    const C = count(raw.C);
+    if (B == null || C == null) return null;
+    const texts = {};
+    for (const [key] of TRANSFER_CHOICES) {
+      const list = raw.texts && Array.isArray(raw.texts[key]) ? raw.texts[key] : [];
+      texts[key] = list.slice(0, 999).map((text) => String(text == null ? "" : text).slice(0, 300));
+    }
+    return { B, C, texts };
+  }
   // 教师版各页画布的大小（手机照搬用）：{ width: 量的时候教师版页面的宽（px），pages: { "A1-0": [画布宽, 画布高]（px）, … } }
   function normCanvas(raw) {
     if (!raw || typeof raw !== "object" || !(Number(raw.width) > 0) || !raw.pages || typeof raw.pages !== "object") return null;
@@ -440,6 +482,8 @@
     const out = emptyData();
     const votes = normVotes(raw && raw.votes);
     if (votes) out.votes = votes;
+    const transfer = normTransfer(raw && raw.transfer);
+    if (transfer) out.transfer = transfer;
     const canvasSizes = normCanvas(raw && raw.canvas);
     if (canvasSizes) out.canvas = canvasSizes;
     if (!raw || typeof raw !== "object" || !raw.regimes || typeof raw.regimes !== "object") return out;
@@ -745,7 +789,9 @@
     if (stage === 0) return "WAIT";
     if (stage === 1) return state.vote_feedback_visible ? "E-FB" : "E";
     if (stage === 2) return `A1-${Math.max(0, Math.min(3, Number(state.force_reveal_step || 0)))}`;
-    if (stage === 3) return `A2-${Math.max(0, Math.min(5, Number(state.deformation_reveal_step || 0)))}`;
+    // A2-6（只在教师端）的页面框里是 01 阶段的投票页：用 E 投票页的版面（在 E 页调的，A2-6 跟着变）。
+    if (stage === 3) return Number(state.deformation_reveal_step || 0) === 6 ? "E" : `A2-${Math.max(0, Math.min(5, Number(state.deformation_reveal_step || 0)))}`;
+    if (stage === 4) return "M";
     return "";
   }
   function currentRegime() {
@@ -808,7 +854,18 @@
     applyCss(data);
     applyContent();
     applyVotes(data);
+    applyTransfer(data);
     fitReplicaCanvas();
+  }
+  // M 页学生回答的人数和文字交给 app.js（window.BEAM_TRANSFER），回答卡片马上跟着变。
+  let appliedTransfer;
+  function applyTransfer(data) {
+    const transfer = data && data.transfer ? data.transfer : null;
+    const sig = transfer ? canon(transfer) : "";
+    if (sig === appliedTransfer) return;
+    appliedTransfer = sig;
+    window.BEAM_TRANSFER = transfer ? clone(transfer) : null;
+    window.dispatchEvent(new CustomEvent("beam-transfer-changed"));
   }
   // 投票人数交给 app.js（window.BEAM_VOTE_COUNTS），E 投票反馈页马上按这组数显示。
   let appliedVotes;
@@ -832,6 +889,7 @@
       + '// "wide" "medium" "narrow" 是教师版（按宽度分档），"phone" 是学生页的手机版面。\n'
       + '// 想恢复默认版面：把 "regimes" 后面的内容改成 {}，或在版面调试里重置后再保存。\n'
       + (data.votes ? '// "votes" 是 E 投票反馈页的人数（agree = A、doubt = B、unsure = C），在版面调试里选中「人数方块」可以改。\n' : "")
+      + (data.transfer ? '// "transfer" 是 M 页「学生回答」：B、C 的人数（A = 第一次投票的总人数 − B − C）和每位同学的想法，在版面调试里选中 M 页右栏可以改。\n' : "")
       + (data.canvas ? '// "canvas" 是教师版各页画布的大小，手机照搬教师版时用；保存时自动量，不用改。\n' : "")
       + `window.BEAM_LAYOUT_OVERRIDES = ${JSON.stringify(payload, null, 2)};\n`;
   }
@@ -1021,7 +1079,7 @@
           <div class="chips"></div>
           <div class="editor"></div>
           <div class="footer">
-            <div class="row"><button data-action="undo">撤销</button><button data-action="redo">重做</button><span class="spacer"></span><button data-action="reset-page">${resetLabel}</button><button class="danger" data-action="reset-everything" title="教师版各页、控制台、手机版面的调整和投票人数全部清掉（可以撤销）">全部重置</button></div>
+            <div class="row"><button data-action="undo">撤销</button><button data-action="redo">重做</button><span class="spacer"></span><button data-action="reset-page">${resetLabel}</button><button class="danger" data-action="reset-everything" title="教师版各页、控制台、手机版面的调整，投票人数和 M 页学生回答全部清掉（可以撤销）">全部重置</button></div>
             <div class="status"></div>
             <div class="row"><button class="primary" data-action="save">保存到文件</button><span class="spacer"></span></div>
             <details class="more"><summary>更多</summary>
@@ -1246,7 +1304,7 @@
     const ownsVotes = ctx.kind !== "console";
     function ownPart(data) {
       const part = {};
-      if (ownsVotes) part["#votes"] = data.votes || null;
+      if (ownsVotes) { part["#votes"] = data.votes || null; part["#transfer"] = data.transfer || null; }
       for (const [regimeKey, regimePages] of Object.entries(data.regimes)) {
         for (const [key, entries] of Object.entries(regimePages)) {
           if (!owns(regimeKey, key)) continue;
@@ -1258,8 +1316,12 @@
     }
     function mergeOwnPart(serialized) {
       const part = JSON.parse(serialized);
-      if (ownsVotes) { if (part["#votes"]) draft.votes = part["#votes"]; else delete draft.votes; }
+      if (ownsVotes) {
+        if (part["#votes"]) draft.votes = part["#votes"]; else delete draft.votes;
+        if (part["#transfer"]) draft.transfer = part["#transfer"]; else delete draft.transfer;
+      }
       delete part["#votes"];
+      delete part["#transfer"];
       for (const [regimeKey, regimePages] of Object.entries(draft.regimes)) {
         for (const key of Object.keys(regimePages)) if (owns(regimeKey, key)) delete regimePages[key];
       }
@@ -1314,6 +1376,7 @@
     function setProp(def, prop, value, options = {}) {
       if (!Number.isFinite(value)) return;
       if (VOTE_PROPS[prop]) { setVote(prop, value, options); return; }
+      if (TRANSFER_PROPS[prop]) { setTransferCount(prop, value, options); return; }
       if (PROPS[prop].virtual) setVirtual(def, prop, value, options);
       else setStored(def, prop, value, options);
       if (prop === "hpx" && def.kind === "main") holdMainHeight(def, options);
@@ -1329,6 +1392,73 @@
       next[key] = Math.max(0, Math.round(value));
       if (canon(next) === canon(defaultVotes())) delete draft.votes; else draft.votes = next;
       commit(options);
+    }
+    // M 页学生回答：没改过就是 app.js 里的默认内容；改回默认时就不再存。
+    const defaultTransfer = () => normTransfer(window.BEAM_TRANSFER_DEFAULT) || { B: 0, C: 0, texts: { A: [], B: [], C: [] } };
+    const currentTransfer = () => clone(draft.transfer || defaultTransfer());
+    const transferTotal = () => Object.values(currentVotes()).reduce((a, b) => a + b, 0);
+    // 实际显示的人数（和 app.js 一样：B 不超过总人数，C 不超过剩下的，A 是余数）
+    function transferCounts(t = currentTransfer()) {
+      const total = transferTotal();
+      const B = Math.min(t.B, total);
+      const C = Math.min(t.C, total - B);
+      return { A: total - B - C, B, C, total };
+    }
+    function storeTransfer(next) {
+      if (canon(next) === canon(defaultTransfer())) delete draft.transfer; else draft.transfer = next;
+    }
+    function setTransferCount(prop, value, options = {}) {
+      const key = TRANSFER_PROPS[prop];
+      if (!options.noUndo) beginEdit(options.reset ? `transfer-reset|${key}` : `transfer|${key}`, Boolean(options.reset));
+      if (!options.keepNote) statusNote = "";
+      const next = currentTransfer();
+      const counts = transferCounts(next);
+      next[key] = Math.max(0, Math.min(counts.total - (key === "B" ? counts.C : counts.B), Math.round(value)));
+      storeTransfer(next);
+      commit(options);
+    }
+    function setTransferText(key, index, text) {
+      beginEdit(`transfer-text|${key}|${index}`);
+      statusNote = "";
+      const next = currentTransfer();
+      const list = (next.texts[key] || []).slice();
+      while (list.length <= index) list.push("");
+      list[index] = text;
+      next.texts[key] = list;
+      storeTransfer(next);
+      commit();
+    }
+    function transferSectionHtml(def) {
+      const t = currentTransfer();
+      const { total } = transferCounts(t);
+      const choices = TRANSFER_CHOICES.map(([key, place]) => {
+        const fields = Array.from({ length: total }, (_, i) => `<input type="text" class="tf-text" data-tf-choice="${key}" data-tf-index="${i}" placeholder="第 ${i + 1} 位同学的想法" value="${escapeHtml((t.texts[key] || [])[i] || "")}">`).join("");
+        return `<div class="tf-choice" data-tf-choice="${key}"><div class="tf-head">选择 ${key} · ${place}：<b class="tf-n"></b></div>${fields}</div>`;
+      }).join("");
+      return `<p class="hint">M 页学生回答（不分页、不分范围，教师版和学生页都用）：总人数 = 01 E 投票反馈页的 A + B + C（在那一页选中「人数方块」改）。这里调 B、C 的人数，A 自动算。</p>
+        ${Object.keys(TRANSFER_PROPS).map((prop) => rowHtml(def, prop)).join("")}
+        <p class="hint tf-sum"></p>
+        <p class="hint">每位同学一句想法：卡片开头的「+人数」= 句数，同一选项的几句连成一行向左滚动；人数为 0 的选项显示灰色的「暂无回答」。可以写 HTML，如 &lt;i&gt;F&lt;/i&gt;&lt;sub&gt;yB&lt;/sub&gt;。</p>
+        ${choices}
+        <div class="row"><button data-action="tf-reset-text">恢复默认的回答文字</button></div>
+        <p class="hint">下面是这个元素本身的位置、大小：</p>`;
+    }
+    function refreshTransferSection() {
+      const editorEl = $(".editor");
+      if (!editorEl || !editorEl.querySelector(".tf-choice")) return;
+      const t = currentTransfer();
+      const counts = transferCounts(t);
+      const sum = editorEl.querySelector(".tf-sum");
+      if (sum) sum.textContent = `A 人数 = 总人数 ${counts.total} − B ${counts.B} − C ${counts.C} = ${counts.A} 人（自动算）`;
+      editorEl.querySelectorAll(".tf-choice").forEach((block) => {
+        const key = block.dataset.tfChoice;
+        block.querySelector(".tf-n").textContent = `${counts[key]} 人${counts[key] ? `，写 ${counts[key]} 句` : "（显示「暂无回答」）"}`;
+        block.querySelectorAll(".tf-text").forEach((input) => {
+          const index = Number(input.dataset.tfIndex);
+          input.hidden = index >= counts[key];
+          if (root.activeElement !== input) input.value = (t.texts[key] || [])[index] || "";
+        });
+      });
     }
     // 页面主体比里面的内容还矮时，实际停在内容放得下的高度；数值也记成这个高度，和看到的一致。
     function holdMainHeight(def, options) {
@@ -1503,6 +1633,7 @@
     }
     function valueOf(def, node, prop) {
       if (VOTE_PROPS[prop]) return currentVotes()[VOTE_PROPS[prop]];
+      if (TRANSFER_PROPS[prop]) return transferCounts()[TRANSFER_PROPS[prop]];
       if (PROPS[prop].virtual) return round(measuredVirtual(node, prop), 0);
       const stored = effectiveProp(def, prop);
       if (stored != null) return stored;
@@ -1793,7 +1924,7 @@
               <textarea class="source" spellcheck="false">${escapeHtml(currentSource(def, node))}</textarea>
               <p class="hint">可以直接写 HTML：&lt;i&gt;F&lt;/i&gt;&lt;sub&gt;yB&lt;/sub&gt; 是斜体加下标，&lt;sup&gt;2&lt;/sup&gt; 是上标，&lt;br&gt; 换行，&lt;b&gt;加粗&lt;/b&gt;，&lt;span style="color:#d71920"&gt;红字&lt;/span&gt;。改完即时显示。</p>
               ${hasText ? '<div class="row"><button data-action="clear-text">恢复原文</button></div>' : ""}</details>`;
-          } else if (node.textContent.trim() && !imageTarget(node) && nodes.length === 1 && !VOTE_DEFS.has(def.key)) {
+          } else if (node.textContent.trim() && !imageTarget(node) && nodes.length === 1 && !VOTE_DEFS.has(def.key) && !TRANSFER_DEFS.has(def.key)) {
             content += '<p class="hint">这里的文字由程序实时生成（或里面有按钮、输入框），不能改成固定文字。</p>';
           }
           if (imageTarget(node) && nodes.length === 1) {
@@ -1804,6 +1935,7 @@
           html = `<div class="ed-head"><strong>${escapeHtml(def.label)}</strong>${group}</div>
             <div class="sel-text" title="${escapeHtml(def.sel)}">${escapeHtml(def.sel)}</div>
             ${VOTE_DEFS.has(def.key) ? `<p class="hint">投票人数（不分页、不分范围，教师版和学生页的投票反馈都用这组数；「N 人完成判断」自动等于 A + B + C）：</p>${Object.keys(VOTE_PROPS).map((prop) => rowHtml(def, prop)).join("")}<p class="hint">下面是这个元素的位置和大小：</p>` : ""}
+            ${TRANSFER_DEFS.has(def.key) ? transferSectionHtml(def) : ""}
             ${levelsHtml(def)}${inheritNote(def)}${tip}${originNote}
             ${props.map((prop) => rowHtml(def, prop)).join("")}
             ${content}
@@ -1852,18 +1984,21 @@
           range.min = prop === "x" || prop === "y" ? "0" : "4";
           range.max = String(Math.round(span));
         }
+        if (TRANSFER_PROPS[prop]) range.max = String(transferCounts().total);
         if (value < Number(range.min)) range.min = String(Math.floor(value));
         if (value > Number(range.max)) range.max = String(Math.ceil(value));
         if (root.activeElement !== range) range.value = String(value);
         if (root.activeElement !== number) number.value = String(round(value, meta.digits));
         const vote = VOTE_PROPS[prop];
-        const own = vote ? currentVotes()[vote] !== defaultVotes()[vote] : ownProp(def, prop);
-        const general = !own && !vote && generalProp(def, prop);
+        const tf = TRANSFER_PROPS[prop];
+        const own = vote ? currentVotes()[vote] !== defaultVotes()[vote] : tf ? currentTransfer()[tf] !== defaultTransfer()[tf] : ownProp(def, prop);
+        const general = !own && !vote && !tf && generalProp(def, prop);
         row.classList.toggle("changed", own);
         row.classList.toggle("general", general);
         row.title = general ? (ctx.kind === "phone" ? "继承来的数值（来自教师版或更大的范围）" : "来自更大范围的设置") : "";
         row.querySelector(".reset").disabled = !own;
       });
+      refreshTransferSection();
       schedulePost();
     }
     function renderStatus() {
@@ -2231,7 +2366,7 @@
       lastEditTag = "";
       draft = emptyData();
       selected = null;
-      statusNote = "已全部重置：教师版各页、控制台、手机版面、投票人数都恢复原样（可以撤销）。点「保存到文件」后，文件里才会清掉。";
+      statusNote = "已全部重置：教师版各页、控制台、手机版面、投票人数、M 页学生回答都恢复原样（可以撤销）。点「保存到文件」后，文件里才会清掉。";
       commit({ rebuild: true });
     }
 
@@ -2254,7 +2389,7 @@
         } else if (key.startsWith("A2-")) {
           if (Number(state.stage) !== 3) await api({ type: "set_stage", stage: 3 });
           await api({ type: "set_deformation_reveal", step: Number(key.slice(3)) });
-        }
+        } else if (key === "M") await api({ type: "set_stage", stage: 4 });
         if (typeof tick === "function") await tick();
       } catch (error) { console.error(error); }
       ctx.onPageChanged && ctx.onPageChanged();
@@ -2349,7 +2484,10 @@
       const reset = event.target.closest("[data-reset]");
       if (reset && selected) {
         const vote = VOTE_PROPS[reset.dataset.reset];
-        if (vote) setVote(reset.dataset.reset, defaultVotes()[vote], { reset: true }); else clearProps(selected.def, [reset.dataset.reset]);
+        const tf = TRANSFER_PROPS[reset.dataset.reset];
+        if (vote) setVote(reset.dataset.reset, defaultVotes()[vote], { reset: true });
+        else if (tf) setTransferCount(reset.dataset.reset, defaultTransfer()[tf], { reset: true });
+        else clearProps(selected.def, [reset.dataset.reset]);
         return;
       }
       const actionEl = event.target.closest("[data-action]");
@@ -2375,6 +2513,14 @@
       else if (action === "replace-image" && selected) { fileInput.value = ""; fileInput.click(); }
       else if (action === "clear-image" && selected) clearImage(selected.def);
       else if (action === "clear-text" && selected) clearText(selected.def);
+      else if (action === "tf-reset-text") {
+        beginEdit("transfer-reset-text", true);
+        const next = currentTransfer();
+        next.texts = clone(defaultTransfer().texts);
+        storeTransfer(next);
+        statusNote = "M 页的回答文字已恢复默认（可以撤销）。";
+        commit({ rebuild: true });
+      }
       else if (action === "reset-element" && selected) clearProps(selected.def, null);
       else if (action === "reset-page") {
         const regimeKey = workRegime();
@@ -2430,6 +2576,10 @@
       if (details && details.classList && details.classList.contains("text-edit") && selected) openTextKey = details.open ? selected.def.key : null;
     }, true);
     root.addEventListener("input", (event) => {
+      if (event.target.classList.contains("tf-text")) {
+        setTransferText(event.target.dataset.tfChoice, Number(event.target.dataset.tfIndex), event.target.value);
+        return;
+      }
       if (event.target.classList.contains("source")) {
         if (!selected) return;
         const def = selected.def;
@@ -2566,6 +2716,10 @@
     .sel-text { font: 10.5px/1.35 Consolas, monospace; color: #8a96a3; margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .prop { display: grid; grid-template-columns: 70px minmax(0,1fr) 62px 18px 22px; gap: 4px; align-items: center; margin: 4px 0; }
     .prop .name { font-size: 12px; }
+    .tf-choice { margin: 8px 0; }
+    .tf-head { font-weight: 700; margin-bottom: 3px; }
+    .tf-text { display: block; width: 100%; margin: 3px 0; padding: 5px 7px; border: 1px solid #c9d6e6; border-radius: 6px; font: 12.5px/1.4 "Microsoft YaHei", system-ui, sans-serif; color: #1f2933; background: #fff; }
+    .tf-text:focus { outline: none; border-color: #d76322; }
     .prop.changed .name { color: #b54f19; font-weight: 700; }
     .prop.general .name, .prop.general input[type=number] { color: #24549a; }
     .prop.general .name { font-weight: 700; }
@@ -2741,6 +2895,7 @@
     }
     // 学生页 / 预览：标记当前页，套用保存的版面；调试模式下打开调试窗口。
     let tuner = null;
+    let answersShown = null; // M 页「显示回答 / 收起回答」后，调试窗口的元素列表跟着更新（回答卡片出现或收起）
     const updatePage = () => {
       const body = document.body;
       if (body.dataset.beamView !== "page") body.dataset.beamView = "page";
@@ -2750,6 +2905,11 @@
         const group = groupOf(key);
         if (group) body.dataset.beamGroup = group; else delete body.dataset.beamGroup;
         if (tuner) tuner.pageChanged();
+      }
+      const shown = Boolean(document.querySelector(".transfer-cards:not([hidden])"));
+      if (shown !== answersShown) {
+        if (tuner && answersShown !== null) tuner.refresh();
+        answersShown = shown;
       }
       applyContent();
       fitReplicaCanvas();
@@ -2822,6 +2982,8 @@
       if (typeof tick === "function") await tick();
     } else if (/^A[12]-\d$/.test(key) && typeof setSelfGuidedPosition === "function") {
       await setSelfGuidedPosition(key[1] === "1" ? 2 : 3, Number(key.slice(3)));
+    } else if (key === "M" && typeof setSelfGuidedPosition === "function") {
+      await setSelfGuidedPosition(4, 0);
     }
   }
 
