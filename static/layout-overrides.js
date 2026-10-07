@@ -1,4 +1,4 @@
-// BEAM LAB 版面调试保存的配置（由「版面调试」窗口自动生成，2026-10-01 06:43:43）
+// BEAM LAB 版面调试保存的配置（由「版面调试」窗口自动生成，2026-10-07 13:36:46）
 // 放在 static 文件夹里，teacher.html 和 student.html 会自动读取。
 // "wide" "medium" "narrow" 是教师版（按宽度分档），"phone" 是学生页的手机版面。
 // 想恢复默认版面：把 "regimes" 后面的内容改成 {}，或在版面调试里重置后再保存。
@@ -1676,7 +1676,7 @@ window.BEAM_LAYOUT_OVERRIDES = {
       }
     }
   },
-  "savedAt": "2026-10-01 06:43:43",
+  "savedAt": "2026-10-07 13:36:46",
   "transfer": {
     "B": 0,
     "C": 5,
@@ -1690,9 +1690,9 @@ window.BEAM_LAYOUT_OVERRIDES = {
       ],
       "C": [
         "B点现在可以下沉，位移不再是0。",
-        "有了弹簧，B点会往下沉，Δ<sub>B</sub> 不再等于 0。",
-        "B点不能再设位移为零。",
         "B点下沉量应等于弹簧压缩量，也就是 <i>F</i><sub>yB</sub>/<i>k</i>。",
+        "B点不能再设位移为零。",
+        "有了弹簧，B点会往下沉，Δ<sub>B</sub> 不再等于 0。",
         "B点的位移要和弹簧的压缩量一样大，等于 <i>F</i><sub>yB</sub>/<i>k</i>。"
       ]
     }
@@ -1701,6 +1701,6 @@ window.BEAM_LAYOUT_OVERRIDES = {
   "votes": {
     "agree": 2,
     "doubt": 1,
-    "unsure": 2
+    "unsure": 1
   }
 };
