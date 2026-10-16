@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#f3eee4" />
+    <title>BEAM LAB · 教师离线控制台</title>
+    <link rel="stylesheet" href="./static/styles.css?v=v6-oct01-m4" />
+  </head>
+  <body>
+    <!-- 控制台套平板外框（一打开就有，避免先闪一下原来的顶部栏）；学生预览（?preview=1）和 ?frame=0 不套 -->
+    <script>(function () { var q = new URLSearchParams(location.search); if (q.get("preview") !== "1" && q.get("frame") !== "0") document.body.classList.add("beam-frame"); })();</script>
+    <header class="topbar">
+      <a class="brand" id="brandLink" href="" aria-label="刷新离线课堂页面">
+        <span class="brand-mark">B</span>
+        <span><strong>BEAM LAB</strong><small>E—A 数智判验实验场</small></span>
+      </a>
+      <div class="session-pill" id="sessionPill">正在载入离线课堂…</div>
+    </header>
+    <main id="app" aria-live="polite"></main>
+    <div id="toast" class="toast" role="status"></div>
+    <script src="./static/compat.js?v=v5-sep27-5"></script>
+    <script src="./static/offline-config.js"></script>
+    <script>
+      window.BEAM_OFFLINE = {
+        role: new URLSearchParams(location.search).get("preview") === "1" ? "student" : "teacher",
+        assetBase: "./static",
+        previewUrl: "./teacher.html?preview=1" + (new URLSearchParams(location.search).get("edit") === "1" ? "&tune=1" : "")
+      };
+    </script>
+    <script src="./static/offline-data.js?v=v5-sep27-5"></script>
+    <!-- 版面调试保存的配置（由 static/layout-tuner.js 读取） -->
+    <script>document.write('<script src="./static/layout-overrides.js?t=' + Date.now() + '"><\/script>');</script>
+    <script src="./static/app.js?v=v6-oct01-m4"></script>
+    <script src="./static/typography.js?v=v6-sep30-m2"></script>
+    <!-- 版面调试：teacher.html?edit=1 打开 -->
+    <script src="./static/layout-tuner.js?v=tuner-13"></script>
+  </body>
+</html>
+
+
+
+
