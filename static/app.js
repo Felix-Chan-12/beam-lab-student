@@ -53,6 +53,14 @@ const DEMO_VOTE_FEEDBACK = {
 // E 投票反馈的人数（A / B / C 各几人，「N 人完成判断」= 三者之和）：可以在版面调试里改，存在 layout-overrides.js 的 votes 里；
 // 没改过就用上面的演示数据。只在离线版（本副本、学生页）生效。
 window.BEAM_DEMO_VOTES = { ...DEMO_VOTE_FEEDBACK.counts };
+// E 投票反馈的匿名补充观点：可以在版面调试里改（选中「匿名观点区」），存在 layout-overrides.js 的 comments 里；
+// 没改过就用上面的演示观点。只在离线版（本副本、学生页）生效。
+window.BEAM_VOTE_COMMENTS_DEFAULT = [...DEMO_VOTE_FEEDBACK.comments];
+function customVoteComments() {
+  const raw = window.BEAM_VOTE_COMMENTS !== undefined ? window.BEAM_VOTE_COMMENTS : window.BEAM_LAYOUT_OVERRIDES?.comments;
+  if (!offlineMode || !Array.isArray(raw)) return null;
+  return raw.map((text) => String(text == null ? "" : text)).filter((text) => text.trim());
+}
 function customVoteCounts() {
   const raw = window.BEAM_VOTE_COUNTS !== undefined ? window.BEAM_VOTE_COUNTS : window.BEAM_LAYOUT_OVERRIDES?.votes;
   if (!offlineMode || !raw || typeof raw !== "object") return null;
@@ -578,18 +586,23 @@ function voteFeedbackSummaryHtml(state) {
     <div class="vote-bars student-vote-bars">${voteBars(counts)}</div>
   </div>
   <section class="student-feedback-comments"><h3>匿名补充观点</h3>
-    ${state.vote_comments.map(comment => `<p>${comment}</p>`).join("")}
+    ${(customVoteComments() || state.vote_comments).map(comment => `<p>${comment}</p>`).join("")}
   </section>`;
 }
 
-// 版面调试里改了投票人数：投票反馈页马上跟着变。
-window.addEventListener("beam-votes-changed", () => {
+// 版面调试里改了投票人数或匿名观点：投票反馈页马上跟着变。
+function refreshVoteSummary() {
   const summary = document.querySelector(".student-feedback-summary");
   if (!summary || !currentState) return;
   const holder = document.createElement("div");
   holder.innerHTML = voteFeedbackSummaryHtml(currentState);
   summary.innerHTML = holder.querySelector(".student-feedback-summary").innerHTML;
-});
+  const comments = document.querySelector(".student-feedback-comments");
+  const fresh = holder.querySelector(".student-feedback-comments");
+  if (comments && fresh) comments.innerHTML = fresh.innerHTML;
+}
+window.addEventListener("beam-votes-changed", refreshVoteSummary);
+window.addEventListener("beam-vote-comments-changed", refreshVoteSummary);
 
 function renderVoteFeedback() {
   app.innerHTML = studentShell("全班判断已经汇总", "E · 投票反馈", `

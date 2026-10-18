@@ -52,6 +52,9 @@
   // 选中「统计区」「人数方块」「票数条」时，窗口里多出三行人数。
   const VOTE_PROPS = { voteA: "agree", voteB: "doubt", voteC: "unsure" };
   const VOTE_DEFS = new Set(["fbSummary", "fbTotal", "fbBars"]);
+  // E 投票反馈页的匿名补充观点：存在配置文件的 comments 里（一条一句，不分宽窄档、不分页），教师版和学生页都用。
+  // 选中「匿名观点区」时，窗口里多出一个文字框，一行一条。
+  const COMMENT_DEFS = new Set(["fbComments"]);
   // M 页「学生回答」：只调 B、C 的人数，A = 第一次投票（E 投票反馈页）的总人数 − B − C；每位同学一句想法（句数 = 人数）。
   // 存在配置文件的 transfer 里（不分宽窄档、不分页），教师版和学生页都用。选中 M 页右栏（学生回答）里的元素时，窗口里多出人数和文字。
   const TRANSFER_PROPS = { tfCountB: "B", tfCountC: "C" };
@@ -453,6 +456,11 @@
     return out;
   }
   // M 页学生回答：{ B: 人数, C: 人数, texts: { A: [每人一句…], B: […], C: […] } }，不对就不用。
+  // 匿名观点：字符串数组（可以是空数组 = 一条都不显示），不对就不用。
+  function normComments(raw) {
+    if (!Array.isArray(raw)) return null;
+    return raw.slice(0, 99).map((text) => String(text == null ? "" : text).slice(0, 300));
+  }
   function normTransfer(raw) {
     if (!raw || typeof raw !== "object") return null;
     const count = (value) => { const n = Math.round(Number(value)); return Number.isFinite(n) && n >= 0 ? Math.min(n, 999) : null; };
@@ -484,6 +492,8 @@
     if (votes) out.votes = votes;
     const transfer = normTransfer(raw && raw.transfer);
     if (transfer) out.transfer = transfer;
+    const comments = normComments(raw && raw.comments);
+    if (comments) out.comments = comments;
     const canvasSizes = normCanvas(raw && raw.canvas);
     if (canvasSizes) out.canvas = canvasSizes;
     if (!raw || typeof raw !== "object" || !raw.regimes || typeof raw.regimes !== "object") return out;
@@ -841,7 +851,13 @@
       const mark = el.querySelector(":scope > template[data-beam-mark]");
       if (mark && mark.dataset.v === version) return;
       if (!mark) originalHtml.set(el, el.innerHTML);
-      el.innerHTML = `${text}<template data-beam-mark data-v="${version}"></template>`;
+      // 标记用 DOM 追加，不拼进字符串：文字里有没写完的标签（如正在输入的「<i」）时，拼进去的标记会被吞掉，
+      // 下次找不到标记就会反复重写，触发 MutationObserver 无限循环，页面卡死。
+      el.innerHTML = text;
+      const tag = document.createElement("template");
+      tag.setAttribute("data-beam-mark", "");
+      tag.dataset.v = version;
+      el.appendChild(tag);
     });
     document.querySelectorAll("template[data-beam-mark]").forEach((mark) => {
       const el = mark.parentElement;
@@ -854,8 +870,19 @@
     applyCss(data);
     applyContent();
     applyVotes(data);
+    applyComments(data);
     applyTransfer(data);
     fitReplicaCanvas();
+  }
+  // 匿名观点交给 app.js（window.BEAM_VOTE_COMMENTS），E 投票反馈页马上跟着变。
+  let appliedComments;
+  function applyComments(data) {
+    const comments = data && Array.isArray(data.comments) ? data.comments : null;
+    const sig = comments ? canon(comments) : "";
+    if (sig === appliedComments) return;
+    appliedComments = sig;
+    window.BEAM_VOTE_COMMENTS = comments ? comments.slice() : undefined;
+    window.dispatchEvent(new CustomEvent("beam-vote-comments-changed"));
   }
   // M 页学生回答的人数和文字交给 app.js（window.BEAM_TRANSFER），回答卡片马上跟着变。
   let appliedTransfer;
@@ -890,6 +917,7 @@
       + '// 想恢复默认版面：把 "regimes" 后面的内容改成 {}，或在版面调试里重置后再保存。\n'
       + (data.votes ? '// "votes" 是 E 投票反馈页的人数（agree = A、doubt = B、unsure = C），在版面调试里选中「人数方块」可以改。\n' : "")
       + (data.transfer ? '// "transfer" 是 M 页「学生回答」：B、C 的人数（A = 第一次投票的总人数 − B − C）和每位同学的想法，在版面调试里选中 M 页右栏可以改。\n' : "")
+      + (data.comments ? '// "comments" 是 E 投票反馈页的匿名补充观点（一条一句），在版面调试里选中「匿名观点区」可以改。\n' : "")
       + (data.canvas ? '// "canvas" 是教师版各页画布的大小，手机照搬教师版时用；保存时自动量，不用改。\n' : "")
       + `window.BEAM_LAYOUT_OVERRIDES = ${JSON.stringify(payload, null, 2)};\n`;
   }
@@ -1304,7 +1332,7 @@
     const ownsVotes = ctx.kind !== "console";
     function ownPart(data) {
       const part = {};
-      if (ownsVotes) { part["#votes"] = data.votes || null; part["#transfer"] = data.transfer || null; }
+      if (ownsVotes) { part["#votes"] = data.votes || null; part["#transfer"] = data.transfer || null; part["#comments"] = data.comments || null; }
       for (const [regimeKey, regimePages] of Object.entries(data.regimes)) {
         for (const [key, entries] of Object.entries(regimePages)) {
           if (!owns(regimeKey, key)) continue;
@@ -1319,9 +1347,11 @@
       if (ownsVotes) {
         if (part["#votes"]) draft.votes = part["#votes"]; else delete draft.votes;
         if (part["#transfer"]) draft.transfer = part["#transfer"]; else delete draft.transfer;
+        if (part["#comments"]) draft.comments = part["#comments"]; else delete draft.comments;
       }
       delete part["#votes"];
       delete part["#transfer"];
+      delete part["#comments"];
       for (const [regimeKey, regimePages] of Object.entries(draft.regimes)) {
         for (const key of Object.keys(regimePages)) if (owns(regimeKey, key)) delete regimePages[key];
       }
@@ -1427,6 +1457,22 @@
       next.texts[key] = list;
       storeTransfer(next);
       commit();
+    }
+    // 匿名观点：没改过就是 app.js 里的演示观点；改回演示观点时就不再存。
+    const defaultComments = () => (Array.isArray(window.BEAM_VOTE_COMMENTS_DEFAULT) ? window.BEAM_VOTE_COMMENTS_DEFAULT.map(String) : []);
+    const currentComments = () => (Array.isArray(draft.comments) ? draft.comments.slice() : defaultComments());
+    function setComments(value) {
+      beginEdit("comments");
+      statusNote = "";
+      const next = String(value).split(/\r?\n/).filter((line) => line.trim());
+      if (canon(next) === canon(defaultComments())) delete draft.comments; else draft.comments = next;
+      commit();
+    }
+    function commentsSectionHtml() {
+      return `<p class="hint">匿名补充观点（不分页、不分范围，教师版和学生页的投票反馈都用）：一行一条，空行不显示；可以写 HTML，如 &lt;i&gt;q&lt;/i&gt;&lt;i&gt;l&lt;/i&gt;。改完即时显示。</p>
+        <textarea class="fb-comments" spellcheck="false">${escapeHtml(currentComments().join("\n"))}</textarea>
+        <div class="row"><button data-action="fb-reset-comments">恢复默认的观点</button>${Array.isArray(draft.comments) ? '<span class="dot">●</span>' : ""}</div>
+        <p class="hint">下面是这个元素的位置和大小：</p>`;
     }
     function transferSectionHtml(def) {
       const t = currentTransfer();
@@ -1924,7 +1970,7 @@
               <textarea class="source" spellcheck="false">${escapeHtml(currentSource(def, node))}</textarea>
               <p class="hint">可以直接写 HTML：&lt;i&gt;F&lt;/i&gt;&lt;sub&gt;yB&lt;/sub&gt; 是斜体加下标，&lt;sup&gt;2&lt;/sup&gt; 是上标，&lt;br&gt; 换行，&lt;b&gt;加粗&lt;/b&gt;，&lt;span style="color:#d71920"&gt;红字&lt;/span&gt;。改完即时显示。</p>
               ${hasText ? '<div class="row"><button data-action="clear-text">恢复原文</button></div>' : ""}</details>`;
-          } else if (node.textContent.trim() && !imageTarget(node) && nodes.length === 1 && !VOTE_DEFS.has(def.key) && !TRANSFER_DEFS.has(def.key)) {
+          } else if (node.textContent.trim() && !imageTarget(node) && nodes.length === 1 && !VOTE_DEFS.has(def.key) && !TRANSFER_DEFS.has(def.key) && !COMMENT_DEFS.has(def.key)) {
             content += '<p class="hint">这里的文字由程序实时生成（或里面有按钮、输入框），不能改成固定文字。</p>';
           }
           if (imageTarget(node) && nodes.length === 1) {
@@ -1936,6 +1982,7 @@
             <div class="sel-text" title="${escapeHtml(def.sel)}">${escapeHtml(def.sel)}</div>
             ${VOTE_DEFS.has(def.key) ? `<p class="hint">投票人数（不分页、不分范围，教师版和学生页的投票反馈都用这组数；「N 人完成判断」自动等于 A + B + C）：</p>${Object.keys(VOTE_PROPS).map((prop) => rowHtml(def, prop)).join("")}<p class="hint">下面是这个元素的位置和大小：</p>` : ""}
             ${TRANSFER_DEFS.has(def.key) ? transferSectionHtml(def) : ""}
+            ${COMMENT_DEFS.has(def.key) ? commentsSectionHtml() : ""}
             ${levelsHtml(def)}${inheritNote(def)}${tip}${originNote}
             ${props.map((prop) => rowHtml(def, prop)).join("")}
             ${content}
@@ -2513,6 +2560,12 @@
       else if (action === "replace-image" && selected) { fileInput.value = ""; fileInput.click(); }
       else if (action === "clear-image" && selected) clearImage(selected.def);
       else if (action === "clear-text" && selected) clearText(selected.def);
+      else if (action === "fb-reset-comments") {
+        beginEdit("comments-reset", true);
+        delete draft.comments;
+        statusNote = "匿名观点已恢复默认（可以撤销）。";
+        commit({ rebuild: true });
+      }
       else if (action === "tf-reset-text") {
         beginEdit("transfer-reset-text", true);
         const next = currentTransfer();
@@ -2576,6 +2629,10 @@
       if (details && details.classList && details.classList.contains("text-edit") && selected) openTextKey = details.open ? selected.def.key : null;
     }, true);
     root.addEventListener("input", (event) => {
+      if (event.target.classList.contains("fb-comments")) {
+        setComments(event.target.value);
+        return;
+      }
       if (event.target.classList.contains("tf-text")) {
         setTransferText(event.target.dataset.tfChoice, Number(event.target.dataset.tfIndex), event.target.value);
         return;
@@ -2737,7 +2794,7 @@
     .reset { padding: 0; width: 22px; height: 22px; }
     details.text-edit { margin-top: 8px; border-top: 1px dashed #e3eaf3; padding-top: 6px; }
     details.text-edit summary { cursor: pointer; color: #24549a; font-size: 12.5px; font-weight: 700; }
-    textarea.source { width: 100%; min-height: 84px; margin-top: 6px; resize: vertical; font: 12px/1.45 Consolas, "Microsoft YaHei", monospace; border: 1px solid #c9d6e6; border-radius: 7px; padding: 6px; color: #1f2933; }
+    textarea.source, textarea.fb-comments { width: 100%; min-height: 84px; margin-top: 6px; resize: vertical; font: 12px/1.45 Consolas, "Microsoft YaHei", monospace; border: 1px solid #c9d6e6; border-radius: 7px; padding: 6px; color: #1f2933; }
     .img-row { margin-top: 8px; }
     .hint { color: #6b7785; font-size: 11.5px; margin: 4px 0; line-height: 1.5; }
     .footer { position: sticky; bottom: -10px; z-index: 2; background: #fff; border-top: 1px solid #e3eaf3; margin-top: 8px; padding: 8px 0 8px; }
