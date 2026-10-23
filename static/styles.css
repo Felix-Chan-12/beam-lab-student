@@ -763,3 +763,9 @@ body:not(.layout-mode) .transfer-card .transfer-count { font-size: calc((var(--t
   body:not(.layout-mode) .transfer-card .transfer-count { font-size: calc((var(--text-small) + var(--text-body)) * 1.6 * 2) !important; }
   body:not(.layout-mode) .transfer-answers .transfer-waiting { font-size: calc(var(--text-small) * 1.6) !important; }
 }
+
+/* 翻页笔开关（2026-10-23）：放大预览底部中间那行「BEAM LAB」小字上叠一个透明按钮，点一下打开或关闭；打开时小字变浅橙。只在放大预览里出现，控制台视图看不到。 */
+#teacherCockpit .clicker-toggle { display: none; }
+body.beam-frame #teacherCockpit.preview-focus > .teacher-command-bar > .clicker-toggle { display: block; position: absolute; z-index: 2; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: 140px; min-width: 0; height: calc(var(--fr-brand) * 1.6 + 8px); min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; cursor: pointer; }
+body.beam-frame #teacherCockpit.preview-focus.clicker-on > .teacher-command-bar::before { color: #e8955f; }

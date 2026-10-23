@@ -2004,7 +2004,7 @@ function renderTeacher(state) {
       <div class="teacher-command-bar panel">
         <div><p class="eyebrow">教师控制台 · 单页运行</p><h2 id="teacherStageTitle"></h2><p class="hint" id="teacherStageDescription"></p></div>
         <div class="stage-nav"><button class="secondary" id="previousStage">上一步</button><button class="primary" id="nextStage">发布下一步</button><button class="vote-control end-vote" id="endVote">结束选择</button><button class="vote-control reopen-vote" id="reopenVote">重新开放</button><button class="vote-control" id="showAnswers">显示回答</button><button class="vote-control" id="hideAnswers">收起回答</button><div class="force-reveal-grid" id="forceRevealGrid" aria-label="验证分析 A1 呈现进度">${[1,2,3,4,5,6].map(step => `<button type="button" data-force-reveal-step="${step}" aria-label="呈现到第${step}项">${step}</button>`).join("")}</div><button class="reveal-control" id="forceRevealNext">呈现下一项</button><button class="secondary" id="forceRevealReset">重置呈现</button><button class="secondary" id="focusPreview">放大学生预览</button>${layoutToolsEnabled ? `<button class="secondary" id="openLayoutEditor">版面调试</button>` : ""}</div>
-        <span class="frame-guard frame-guard-left" aria-hidden="true"></span><span class="frame-guard frame-guard-right" aria-hidden="true"></span>
+        <span class="frame-guard frame-guard-left" aria-hidden="true"></span><span class="frame-guard frame-guard-right" aria-hidden="true"></span><button type="button" class="clicker-toggle" id="clickerToggle" aria-pressed="false" aria-label="翻页笔模式（点一下打开或关闭）"></button>
       </div>
       <div class="stage-roadmap">${roadmap}</div>
       <div class="teacher-workspace">
@@ -2049,6 +2049,7 @@ function renderTeacher(state) {
     document.querySelector("#focusPreview").addEventListener("click", (event) => {
       const focused = document.querySelector("#teacherCockpit").classList.toggle("preview-focus");
       event.currentTarget.textContent = focused ? "返回控制台" : "放大学生预览";
+      syncClickerTeacher(); // 翻页笔只在放大预览里起作用
       document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.protocol === "file:" ? "*" : location.origin);
     });
     // 入口下方原来的「复制学生网址」「重置试讲数据」按钮改成了两块标签（自主设计的 / AI虚拟实验室），只显示文字，点了没反应。
@@ -2056,7 +2057,9 @@ function renderTeacher(state) {
     document.querySelector("#openLayoutEditor")?.addEventListener("click", () => {
       window.dispatchEvent(new CustomEvent("beam-tuner-toggle"));
     });
+    setupClickerTeacher();
     document.querySelector("#studentPreview").addEventListener("load", () => {
+      syncClickerTeacher();
       const focused = document.querySelector("#teacherCockpit").classList.contains("preview-focus");
       document.querySelector("#studentPreview")?.contentWindow?.postMessage({type:"beam-preview-timer", running:focused}, location.protocol === "file:" ? "*" : location.origin);
     });
@@ -2280,6 +2283,111 @@ async function start() {
   await tick();
   setInterval(tick, role === "teacher" ? 1200 : 1000);
 }
+
+// ===== 翻页笔（2026-10-23）=====
+// 默认关闭，只用鼠标。打开：「放大学生预览」后，点底部中间那行「BEAM LAB」小字（变浅橙＝已打开；再点一下关闭；本机记住）。
+// 打开后只在放大预览里起作用：PageDown／→ 下一页，PageUp／← 上一页；F5 不刷新；其他键不处理。版面调试（?edit=1）里不起作用。
+// 下一页：本页还有没点的就先点下一个（力法版没有页内圆球） → 下一步 → 下一阶段；
+// 上一页反过来，退到上一页时停在那一页的最后状态。AI 按钮、候选值按钮、滑块不归翻页笔管。
+// 外层（控制台）收到按键就转给预览框；预览框里的页面自己判断该点圆球还是换页（离线时直接写课堂状态，控制台随后跟上）。
+const CLICKER_STORE_KEY = "beam-clicker-mode";
+const CLICKER_A1_LAST = 3;
+let clickerActive = false;
+let clickerBusy = false;
+let clickerLastAt = 0;
+
+function clickerDirOf(event) {
+  if (event.ctrlKey || event.altKey || event.metaKey) return 0;
+  if (event.key === "PageDown" || event.key === "ArrowRight") return 1;
+  if (event.key === "PageUp" || event.key === "ArrowLeft") return -1;
+  return 0;
+}
+function clickerKeydown(event, run) {
+  if (!clickerActive) return;
+  if (event.key === "F5") { event.preventDefault(); event.stopPropagation(); return; }
+  const dir = clickerDirOf(event);
+  if (!dir) return;
+  event.preventDefault(); // 焦点在滑块上时也不让它跟着动
+  event.stopPropagation();
+  if (!event.repeat) run(dir); // 按住不放只算一次
+}
+function clickerPost(message) {
+  document.querySelector("#studentPreview")?.contentWindow?.postMessage(message, location.protocol === "file:" ? "*" : location.origin);
+}
+function clickerStoredOn() {
+  try { return localStorage.getItem(CLICKER_STORE_KEY) === "1"; } catch { return false; }
+}
+function syncClickerTeacher() {
+  const cockpit = document.querySelector("#teacherCockpit");
+  if (!cockpit || layoutToolsEnabled) return;
+  const on = clickerStoredOn();
+  cockpit.classList.toggle("clicker-on", on);
+  document.querySelector("#clickerToggle")?.setAttribute("aria-pressed", String(on));
+  clickerActive = on && cockpit.classList.contains("preview-focus");
+  clickerPost({ type: "beam-clicker-mode", active: clickerActive });
+}
+function setupClickerTeacher() {
+  const toggle = document.querySelector("#clickerToggle");
+  if (layoutToolsEnabled) { toggle?.remove(); return; }
+  toggle?.addEventListener("click", () => {
+    try { localStorage.setItem(CLICKER_STORE_KEY, clickerStoredOn() ? "0" : "1"); } catch {}
+    toggle.blur();
+    syncClickerTeacher();
+  });
+  window.addEventListener("keydown", (event) => clickerKeydown(event, (dir) => clickerPost({ type: "beam-clicker", dir })), true);
+  syncClickerTeacher();
+}
+function setupClickerPreview() {
+  window.addEventListener("message", (event) => {
+    const sameOrigin = event.origin === location.origin || (location.protocol === "file:" && event.origin === "null");
+    if (event.source !== window.parent || !sameOrigin) return;
+    if (event.data?.type === "beam-clicker-mode") clickerActive = Boolean(event.data.active);
+    else if (event.data?.type === "beam-clicker" && clickerActive) runClicker(Number(event.data.dir) > 0 ? 1 : -1);
+  });
+  window.addEventListener("keydown", (event) => clickerKeydown(event, runClicker), true);
+}
+// 下一步／上一步落在哪里（阶段 0～4；A1 步骤 0～CLICKER_A1_LAST，A2 步骤 0～A2_LAST_STEP）
+function clickerTargetOf(state, dir) {
+  const stage = Number(state.stage || 0);
+  const step = stage === 2 ? Number(state.force_reveal_step || 0) : stage === 3 ? Number(state.deformation_reveal_step || 0) : 0;
+  const lastOf = (s) => s === 2 ? CLICKER_A1_LAST : s === 3 ? A2_LAST_STEP : 0;
+  if (dir > 0) {
+    if (step < lastOf(stage)) return { stage, step: step + 1 };
+    return stage < 4 ? { stage: stage + 1, step: 0 } : null;
+  }
+  if (step > 0) return { stage, step: step - 1 };
+  return stage > 0 ? { stage: stage - 1, step: lastOf(stage - 1) } : null;
+}
+// 力法版没有页内圆球：翻页笔只走步骤和阶段。
+function clickerLocal() { return false; }
+async function clickerBeforeLanding() {}
+function clickerLanded() {}
+async function runClicker(dir) {
+  const now = Date.now();
+  if (clickerBusy || now - clickerLastAt < 250) return;
+  if (document.querySelector('[aria-busy="true"]')) return; // AI 动画播放中
+  clickerLastAt = now;
+  clickerBusy = true;
+  try {
+    await tick(); // 先跟上控制台刚做的改动
+    if (await clickerLocal(dir)) return;
+    const state = currentState;
+    const target = state && clickerTargetOf(state, dir);
+    if (!target) return;
+    if (target.stage !== Number(state.stage)) await api({ type: "set_stage", stage: target.stage });
+    if (target.stage === 2 || target.stage === 3) {
+      if (target.step || target.stage === Number(state.stage)) await api({ type: target.stage === 2 ? "set_force_reveal" : "set_deformation_reveal", step: target.step });
+    }
+    if (dir < 0) await clickerBeforeLanding();
+    await tick();
+    if (dir < 0) clickerLanded();
+  } catch (error) {
+    console.error(error);
+  } finally {
+    clickerBusy = false;
+  }
+}
+if (isPreview && window.parent !== window && !layoutMode) setupClickerPreview();
 
 start().catch(() => {
   sessionPill.textContent = "连接失败";
