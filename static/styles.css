@@ -769,3 +769,43 @@ body:not(.layout-mode) .transfer-card .transfer-count { font-size: calc((var(--t
 body.beam-frame #teacherCockpit.preview-focus > .teacher-command-bar > .clicker-toggle { display: block; position: absolute; z-index: 2; left: 50%; bottom: 0; transform: translateX(-50%);
   width: 140px; min-width: 0; height: calc(var(--fr-brand) * 1.6 + 8px); min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; outline: none; cursor: pointer; }
 body.beam-frame #teacherCockpit.preview-focus.clicker-on > .teacher-command-bar::before { color: #e8955f; }
+/* 页内圆球（2026-10-24）：样子照位移法版的分镜圆球（灰底白边，点亮变橙），A1-0 在画布右上角，其余页在右栏控制卡最下面。 */
+.page-dots { display: flex; align-items: center; margin-top: auto; padding: 8px 0 18px 44px; }
+.page-dots-corner { position: absolute; z-index: 8; top: 14px; right: 18px; margin: 0; padding: 0; }
+.page-dot-track { position: relative; display: flex; align-items: center; gap: 44px; height: 36px; padding: 0 3px; }
+.page-dot-track::before { content: ""; position: absolute; left: 15.5px; right: 15.5px; top: 50%; height: 3px; margin-top: -1.5px; background: #dce3ed; }
+.page-dot { position: relative; display: block; flex: none; width: 25px; height: 25px; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 2px solid #fff; border-radius: 50%; background: #dce3ed; box-sizing: border-box; box-shadow: none; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.page-dot:hover { background: #cdd6e2; }
+.page-dot.active { background: var(--orange); box-shadow: 0 0 0 3px #fbe7d9; }
+.page-dot:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
+/* A1-0、A2-5：白块盖住原结构图里B点的支座和字母B，底边给 FyB 箭头尖留缺口（按 scene/2.png 的图片像素量的）。 */
+.b-support-cover { position: absolute; z-index: 3; left: 86.75%; top: 28.39%; width: 13.25%; height: 35.52%; background: #fff; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .35s, visibility .35s;
+  clip-path: polygon(55.19% 0, 100% 0, 100% 100%, 57.55% 100%, 54.25% 95.28%, 50.94% 100%, 0 100%, 0 6.3%, 55.19% 6.3%); }
+.b-support-cover.on { opacity: 1; visibility: visible; }
+/* A1-3：FyB 不透明框加黑边框，出现时由外向内收一下。 */
+.force-live-value.page-dot-framed { border-radius: 2px; box-shadow: 0 0 0 3px #111; animation: page-frame-in .55s ease-out; }
+@keyframes page-frame-in { 0% { box-shadow: 0 0 0 16px rgba(17,17,17,0); } 70% { box-shadow: 0 0 0 2px #111; } 100% { box-shadow: 0 0 0 3px #111; } }
+/* A2-0、A2-4、A2-5：下排梁右端补的字母B（位置、字号由 app.js 按图片算）。 */
+.b-point-letter { position: absolute; z-index: 5; left: 0; top: 0; transform-origin: 40% 50%; color: #111; font: 700 40px/1 "Times New Roman", Times, serif; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; }
+.b-point-letter.on { opacity: 1; visibility: visible; }
+/* 脉冲强调（类似 PPT 的「脉冲」）：放大、变橙、发光，连续两下。 */
+.b-point-letter.b-pulse { animation: page-pulse-b 1.5s ease-in-out; }
+@keyframes page-pulse-b {
+  0%, 36%, 72%, 100% { scale: 1; color: #111; text-shadow: none; }
+  18% { scale: 1.55; color: #ff5900; text-shadow: 0 0 14px rgba(255,89,0,.55); }
+  54% { scale: 1.35; color: #ff5900; text-shadow: 0 0 12px rgba(255,89,0,.45); }
+}
+.deformation-zero-label.b-pulse { transform-origin: 50% 50%; animation: page-pulse-zero 1.5s ease-in-out; }
+@keyframes page-pulse-zero {
+  0%, 36%, 72%, 100% { scale: 1; }
+  18% { scale: 1.3; text-shadow: 0 1px 0 #fff, 0 0 14px rgba(24,169,91,.7); }
+  54% { scale: 1.18; text-shadow: 0 1px 0 #fff, 0 0 12px rgba(24,169,91,.6); }
+}
+/* A2-5 第一个圆球：从上排B点绕到下排B点的弯箭头，点出时从头画到尾。 */
+.b-transfer-arrow { position: absolute; inset: 0; z-index: 6; width: 100%; height: 100%; overflow: visible; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s; }
+.b-transfer-arrow.on { opacity: 1; visibility: visible; }
+.b-transfer-arrow path { fill: none; stroke: #111; stroke-width: var(--b-arrow-width, 6px); stroke-linecap: round; stroke-linejoin: round; }
+.b-transfer-arrow.on [data-b-arrow-line] { stroke-dasharray: 1 2; animation: page-arrow-draw .7s ease-out both; }
+.b-transfer-arrow.on [data-b-arrow-head] { animation: page-arrow-head .2s .62s ease-out both; }
+@keyframes page-arrow-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes page-arrow-head { from { opacity: 0; } to { opacity: 1; } }

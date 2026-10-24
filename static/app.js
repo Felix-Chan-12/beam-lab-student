@@ -734,6 +734,7 @@ function bindForceStoryboard() {
     const bottomCaption = story?.querySelector("[data-force-bottom-caption]");
     if (topCaption) topCaption.hidden = false;
     if (bottomCaption) bottomCaption.hidden = numericStep < 2;
+    syncPageDots();
   };
   forceStoryboardRefresh = refresh;
   sliders.forEach((slider) => {
@@ -813,6 +814,7 @@ function bindDeformationStoryboard() {
     }
     applyDeformationStepLayout(step);
     lastDeformationRevealStep = step;
+    syncPageDots();
   };
   forceStoryboardRefresh = refresh;
   slider.addEventListener('input', () => {
@@ -949,12 +951,15 @@ function deformationFormulaHtml(step, r = deformationBasicX1) {
   const fyb = '<span class="fraction"><span><i>l</i><sup>3</sup></span><span>3<i>E</i><i>I</i></span></span><i>F</i><sub><i>yB</i></sub>';
   if (step === 2) return uniform;
   if (step === 3) return `&minus;${fyb}`;
-  if (step === 4) return `Δ<sub>B</sub> = ${uniform} &minus; ${fyb}`;
+  // A2-4、A2-5：第一项和 A2-2 同色（紫），第二项（连同负号）和 A2-3 同色（绿），其余仍是本页的橘色。
+  const uniformPart = `<span style="color:${deformationLayout?.steps?.["2"]?.formula?.color || "#800080"}">${uniform}</span>`;
+  const fybPart = `<span style="color:${deformationLayout?.steps?.["3"]?.formula?.color || "#008000"}">&minus; ${fyb}</span>`;
+  if (step === 4) return `Δ<sub>B</sub> = ${uniformPart} ${fybPart}`;
   const rawCoefficient = 1 / 8 - r / 3;
   const coefficient = Math.abs(rawCoefficient) < 0.0000005 ? 0 : rawCoefficient;
   const coefficientText = coefficient.toFixed(4).replace("-", "&minus;");
   const result = `${coefficientText} <span class="fraction compact-fraction"><span><i>q</i><i>l</i><sup>4</sup></span><span><i>E</i><i>I</i></span></span>`;
-  return `Δ<sub>B</sub> = ${uniform} &minus; ${fyb} = ${result}`;
+  return `Δ<sub>B</sub> = ${uniformPart} ${fybPart} = ${result}`;
 }
 
 function updateDeformationReveal(state) {
@@ -985,6 +990,162 @@ function updateDeformationReveal(state) {
   applyDeformationStepLayout(step);
 }
 
+// ===== 页内圆球（2026-10-24）=====
+// 样子照位移法版的分镜圆球。只在教师端的学生预览（放大投屏）里出现，版面调试里不出现；
+// 点一下出现，再点一下收起；换页后恢复原样；只改本机画面，不写课堂状态。
+// A1-0：1个圆球，盖住原结构B点的支座（连字母B）。
+// A1-3：2个圆球，各管上、下图 FyB 不透明框的黑边框（可以同时框出）。
+// A2-0：1个圆球，下排静定结构梁右端补上字母B，并脉冲强调；这个B在 A2-4、A2-5 同一位置一直显示。
+// A2-5：2个圆球，二选一。第一个：盖住上排B点的链杆，画弯箭头指向下排B点；
+//       第二个：第一个的内容收起，下排B再脉冲一次，上排「ΔB = 0」也脉冲一下。
+const PAGE_DOT_PAGES = {
+  "A1-0": { count: 1 },
+  "A1-3": { count: 2, independent: true },
+  "A2-0": { count: 1 },
+  "A2-5": { count: 2 },
+};
+const pageDotsEnabled = isPreview && !layoutMode;
+const pageDots = { key: "", on: [] };
+// 盖住原结构图（scene/2.png）里B点的支座和字母B，形状写在 styles.css 的 .b-support-cover（底边给 FyB 箭头尖留了缺口）。
+const B_SUPPORT_COVER_HTML = '<div class="b-support-cover" data-b-cover aria-hidden="true"></div>';
+// 下排结构图里梁右端（B点）的位置和图里字母 A 的字高，单位是图片像素；按图片文件名认图。
+const B_LETTER_SPOTS = [
+  { match: "/scene/7.png", end: [1578, 220], cap: 85 },
+  { match: "d4_bottomStructure", end: [1578, 300], cap: 115 },
+];
+
+function pageDotsKey(state = currentState) {
+  const stage = Number(state?.stage);
+  if (stage === 2) return `A1-${Math.max(0, Math.min(3, Number(state.force_reveal_step || 0)))}`;
+  if (stage === 3) return `A2-${Number(state.deformation_reveal_step || 0)}`;
+  return "";
+}
+
+// 当前页有圆球就返回它的设置；换了页，圆球全部复位。
+function pageDotsPage() {
+  if (!pageDotsEnabled) return null;
+  const key = pageDotsKey();
+  if (pageDots.key !== key) Object.assign(pageDots, { key, on: [] });
+  const page = PAGE_DOT_PAGES[key];
+  const story = document.querySelector(key.startsWith("A2") ? ".deformation-story" : ".force-story:not(.deformation-story)");
+  return page && story ? page : null;
+}
+
+function pagePulse(element, ms = 1600) {
+  if (!element) return;
+  element.classList.remove("b-pulse");
+  void element.offsetWidth;
+  element.classList.add("b-pulse");
+  clearTimeout(element._pulseTimer);
+  element._pulseTimer = setTimeout(() => element.classList.remove("b-pulse"), ms);
+}
+
+function pageDotsClick(index) {
+  const page = pageDotsPage();
+  if (!page) return;
+  const turnOn = !pageDots.on[index];
+  if (page.independent) pageDots.on[index] = turnOn;
+  else pageDots.on = Array.from({ length: page.count }, (_, i) => i === index && turnOn);
+  syncPageDots();
+  if (!turnOn) return;
+  if (pageDots.key === "A2-0") pagePulse(document.querySelector("[data-b-letter]"));
+  if (pageDots.key === "A2-5" && index === 1) {
+    pagePulse(document.querySelector("[data-b-letter]"));
+    pagePulse(document.querySelector("[data-deformation-zero-label]"));
+  }
+}
+
+// 图片（object-fit: contain）实际画出来的区域：相对它所在元素的位置，以及 1 个图片像素合多少屏幕像素。
+function imageContentBox(img) {
+  const w = img?.offsetWidth, h = img?.offsetHeight, nw = img?.naturalWidth, nh = img?.naturalHeight;
+  if (!img?.complete || !w || !h || !nw || !nh) return null;
+  const ratio = nw / nh;
+  const cw = Math.min(w, h * ratio);
+  return { x: img.offsetLeft + (w - cw) / 2, y: img.offsetTop + (h - cw / ratio) / 2, scale: cw / nw };
+}
+
+function bLetterSpot(img) {
+  const src = img?.getAttribute("src") || "";
+  return B_LETTER_SPOTS.find((spot) => src.includes(spot.match)) || null;
+}
+
+function placeBLetter(letter) {
+  const img = letter.parentElement.querySelector(":scope > img");
+  const spot = bLetterSpot(img);
+  const box = spot && imageContentBox(img);
+  if (!box) return false;
+  const cap = spot.cap * box.scale;
+  const size = cap * 1.2 / .662; // 比图里的字母 A 大两成；Times 的大写字高约 0.662 个字号
+  letter.style.left = `${box.x + spot.end[0] * box.scale + cap * .55}px`;
+  letter.style.top = `${box.y + spot.end[1] * box.scale + cap * .45 - size / 2}px`;
+  letter.style.setProperty("font-size", `${size}px`, "important"); // 盖过 styles.css 里统一字号的 !important
+  return true;
+}
+
+// A2-5 的弯箭头：从上排被盖住的链杆处出发，向右绕下来，指向下排B点。
+function placeBArrow(arrow) {
+  const canvas = arrow.parentElement;
+  const topImg = canvas.querySelector('[data-element-slot="originalStructure"] > img');
+  const bottomImg = canvas.querySelector('[data-element-slot="basicStructure"] > img');
+  const topBox = imageContentBox(topImg);
+  const bottomBox = imageContentBox(bottomImg);
+  const spot = bLetterSpot(bottomImg);
+  if (!topBox || !bottomBox || !spot) return false;
+  const at = (img, box, x, y) => [img.parentElement.offsetLeft + box.x + x * box.scale, img.parentElement.offsetTop + box.y + y * box.scale];
+  const [sx, sy] = at(topImg, topBox, 1550, 340);
+  const [ex, ey] = at(bottomImg, bottomBox, spot.end[0] + .9 * spot.cap, spot.end[1] - 1.2 * spot.cap);
+  const dy = ey - sy;
+  const bulge = .34 * dy;
+  const c2 = [ex + bulge, ey - .45 * dy];
+  const width = canvas.clientWidth;
+  const f = (n) => n.toFixed(1);
+  arrow.setAttribute("viewBox", `0 0 ${width} ${canvas.clientHeight}`);
+  arrow.querySelector("[data-b-arrow-line]").setAttribute("d", `M${f(sx)} ${f(sy)} C${f(sx + bulge)} ${f(sy + .2 * dy)} ${f(c2[0])} ${f(c2[1])} ${f(ex)} ${f(ey)}`);
+  const angle = Math.atan2(ey - c2[1], ex - c2[0]);
+  const arm = (a) => `${f(ex - .03 * width * Math.cos(a))} ${f(ey - .03 * width * Math.sin(a))}`;
+  arrow.querySelector("[data-b-arrow-head]").setAttribute("d", `M${arm(angle - .55)} L${f(ex)} ${f(ey)} L${arm(angle + .55)}`);
+  arrow.style.setProperty("--b-arrow-width", `${Math.max(3, width * .0045).toFixed(1)}px`);
+  return true;
+}
+
+// 按当前页和圆球状态摆好圆球和各项提示；课堂状态每秒刷新时也会调用，所以这里只做不会重复触发动画的事。
+function syncPageDots() {
+  const page = pageDotsPage();
+  const key = pageDots.key;
+  const on = (index) => Boolean(page && pageDots.on[index]);
+  const host = !page ? null : key === "A1-0"
+    ? document.querySelector(".force-story:not(.deformation-story) .force-free-canvas")
+    : document.querySelector(".force-story .force-control");
+  let dots = document.querySelector("[data-page-dots]");
+  if (dots && (!host || dots.parentElement !== host || dots.dataset.pageDots !== key)) {
+    dots.remove();
+    dots = null;
+  }
+  if (host && !dots) {
+    const buttons = Array.from({ length: page.count }, (_, i) => `<button type="button" class="page-dot" data-page-dot="${i}" aria-label="第${i + 1}个提示"></button>`).join("");
+    host.insertAdjacentHTML("beforeend", `<div class="page-dots${key === "A1-0" ? " page-dots-corner" : ""}" data-page-dots="${key}"><div class="page-dot-track">${buttons}</div></div>`);
+    dots = host.lastElementChild;
+    dots.querySelectorAll("[data-page-dot]").forEach((dot) => dot.addEventListener("click", () => pageDotsClick(Number(dot.dataset.pageDot))));
+  }
+  dots?.querySelectorAll("[data-page-dot]").forEach((dot, i) => {
+    dot.classList.toggle("active", on(i));
+    dot.setAttribute("aria-pressed", String(on(i)));
+  });
+  document.querySelectorAll("[data-b-cover]").forEach((cover) => cover.classList.toggle("on", (key === "A1-0" || key === "A2-5") && on(0)));
+  [["originalFyB", 0], ["basicFyB", 1]].forEach(([slot, i]) => {
+    document.querySelectorAll(`.force-story:not(.deformation-story) [data-force-label-slot="${slot}"]`).forEach((label) => label.classList.toggle("page-dot-framed", key === "A1-3" && on(i)));
+  });
+  const letter = document.querySelector(".deformation-story [data-b-letter]");
+  if (letter) {
+    const step = Number(currentState?.deformation_reveal_step || 0);
+    const show = step === 4 || step === 5 || (key === "A2-0" && on(0));
+    letter.classList.toggle("on", show && placeBLetter(letter));
+  }
+  const arrow = document.querySelector(".deformation-story [data-b-arrow]");
+  if (arrow) arrow.classList.toggle("on", key === "A2-5" && on(0) && placeBArrow(arrow));
+}
+window.addEventListener("resize", () => syncPageDots());
+
 function renderForce() {
   app.innerHTML = `${steps(2)}<section class="panel force-story"><h1>${forceStepHeadings[0]}</h1>
     <div class="force-composition">
@@ -1000,6 +1161,7 @@ function renderForce() {
       </div>
     </div>
   </section>`;
+  document.querySelector('[data-element-slot="originalStructure"]')?.insertAdjacentHTML("beforeend", B_SUPPORT_COVER_HTML);
   bindForceStoryboard();
   updateForceReveal(currentState);
   applyForceLayout();
@@ -1030,7 +1192,11 @@ function renderDeformation() {
   const topCanvasHeight = Math.round(1000 / FORCE_ELEMENT_META.originalStructure.ratio);
   originalStructure.insertAdjacentHTML("afterbegin", `<canvas class="deformation-load-canvas" data-deformation-load-top data-deformation-system="top" width="1000" height="${topCanvasHeight}" hidden></canvas>`);
   originalStructure.insertAdjacentHTML("beforeend", '<div class="deformation-zero-label" data-deformation-zero-label hidden>Δ<sub>B</sub> = 0</div>');
+  originalStructure.insertAdjacentHTML("beforeend", B_SUPPORT_COVER_HTML);
+  basicStructure.insertAdjacentHTML("beforeend", '<div class="b-point-letter" data-b-letter aria-hidden="true">B</div>');
+  basicStructure.querySelector("img")?.addEventListener("load", () => syncPageDots());
   document.querySelector(".force-free-canvas").insertAdjacentHTML("beforeend", '<div class="deformation-formula-label" data-deformation-formula hidden></div>');
+  document.querySelector(".force-free-canvas").insertAdjacentHTML("beforeend", '<svg class="b-transfer-arrow" data-b-arrow aria-hidden="true"><path data-b-arrow-line pathLength="1"/><path data-b-arrow-head/></svg>');
   bindDeformationStoryboard();
   updateDeformationReveal(currentState);
 }
@@ -2287,7 +2453,7 @@ async function start() {
 // ===== 翻页笔（2026-10-23）=====
 // 默认关闭，只用鼠标。打开：「放大学生预览」后，点底部中间那行「BEAM LAB」小字（变浅橙＝已打开；再点一下关闭；本机记住）。
 // 打开后只在放大预览里起作用：PageDown／→ 下一页，PageUp／← 上一页；F5 不刷新；其他键不处理。版面调试（?edit=1）里不起作用。
-// 下一页：本页还有没点的就先点下一个（力法版没有页内圆球） → 下一步 → 下一阶段；
+// 下一页：本页还有没点的就先点下一个（页内圆球只在 A1-0、A1-3、A2-0、A2-5） → 下一步 → 下一阶段；
 // 上一页反过来，退到上一页时停在那一页的最后状态。AI 按钮、候选值按钮、滑块不归翻页笔管。
 // 外层（控制台）收到按键就转给预览框；预览框里的页面自己判断该点圆球还是换页（离线时直接写课堂状态，控制台随后跟上）。
 const CLICKER_STORE_KEY = "beam-clicker-mode";
@@ -2358,10 +2524,31 @@ function clickerTargetOf(state, dir) {
   if (step > 0) return { stage, step: step - 1 };
   return stage > 0 ? { stage: stage - 1, step: lastOf(stage - 1) } : null;
 }
-// 力法版没有页内圆球：翻页笔只走步骤和阶段。
-function clickerLocal() { return false; }
+// 页内圆球（A1-0、A1-3、A2-0、A2-5）：下一页先依次点亮圆球，上一页先依次收起；其他页只走步骤和阶段。
+function clickerLocal(dir) {
+  const page = pageDotsPage();
+  if (!page) return false;
+  const indexes = Array.from({ length: page.count }, (_, i) => i);
+  if (page.independent) {
+    const index = dir > 0 ? indexes.find((i) => !pageDots.on[i]) : indexes.reverse().find((i) => pageDots.on[i]);
+    if (index == null) return false;
+    pageDotsClick(index);
+    return true;
+  }
+  const current = pageDots.on.indexOf(true);
+  const next = current + dir;
+  if (next < -1 || next >= page.count) return false;
+  pageDotsClick(next === -1 ? current : next);
+  return true;
+}
 async function clickerBeforeLanding() {}
-function clickerLanded() {}
+// 退到上一页时停在那一页的最后状态：圆球都点过（A2-5 停在第二个）。
+function clickerLanded() {
+  const page = pageDotsPage();
+  if (!page) return;
+  pageDots.on = Array.from({ length: page.count }, (_, i) => Boolean(page.independent) || i === page.count - 1);
+  syncPageDots();
+}
 async function runClicker(dir) {
   const now = Date.now();
   if (clickerBusy || now - clickerLastAt < 250) return;
