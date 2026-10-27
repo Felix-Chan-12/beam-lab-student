@@ -2543,9 +2543,13 @@ function clickerDotsLocal(dir) {
 }
 // 力法（2026-10-24）：A1-3 先来回滑一遍 F_yB，再点两个圆；A2-4 依次 AI → F_yB＝0 → ql/4 → ql/2 → 来回滑一遍
 // （A2-4 只在 0.40～0.50ql 之间来回，停在 0.49ql 左右）。
+// 2026-10-27：A1-3 两个圆点完以后，再按一下「快速往复」：一边 → 另一边 → 一边 → 回到原位，约 2 秒（sweep:a13back）。
 const CLICKER_PRE_PAGES = { "A1-3": ["sweep"] };
-const CLICKER_EXTRA_PAGES = { "A2-4": ["ai", "pick:0", "pick:1", "pick:2", "sweep:a24"] };
-const CLICKER_SWEEP_OPTS = { "sweep:a24": { lo: 0.4, hi: 0.5, end: () => clickerPick([0.49, 0.49, 0.485, 0.495]) } };
+const CLICKER_EXTRA_PAGES = { "A1-3": ["sweep:a13back"], "A2-4": ["ai", "pick:0", "pick:1", "pick:2", "sweep:a24"] };
+const CLICKER_SWEEP_OPTS = {
+  "sweep:a13back": { shape: "back", fast: true },
+  "sweep:a24": { lo: 0.4, hi: 0.5, end: () => clickerPick([0.49, 0.49, 0.485, 0.495]) },
+};
 function clickerPageKey() { return pageDotsKey(); }
 function clickerResetAi() {
   const button = document.querySelector("[data-ai-deformation-button]");
@@ -2614,7 +2618,8 @@ function clickerSetSlider(slider, value) {
 function clickerVisibleSlider(selector) {
   return [...document.querySelectorAll(selector)].find((el) => el.getClientRects().length > 0 && !el.disabled) || null;
 }
-// opts（可选）：lo、hi 限定来回的范围；end() 给出停的位置（每次随机一点，但落在想要的范围里）。
+// opts（可选）：lo、hi 限定来回的范围；end() 给出停的位置（每次随机一点，但落在想要的范围里）；
+// shape: "back" 是往复两次后回到原位（一边 → 另一边 → 一边 → 原位）；fast 让每一段走得快些（整条滑块约 0.8 秒）。
 function clickerPick(list) { return list[Math.floor(Math.random() * list.length)]; }
 function clickerSweep(slider, opts = {}) {
   return new Promise((resolve) => {
@@ -2627,13 +2632,18 @@ function clickerSweep(slider, opts = {}) {
     const rand = (a, b) => a + Math.random() * (b - a);
     const high = () => rand(lo + 0.72 * span, hi), low = () => rand(lo, lo + 0.28 * span);
     let end = from, guard = 0;
-    if (typeof opts.end === "function") end = opts.end();
+    if (opts.shape === "back") end = from;
+    else if (typeof opts.end === "function") end = opts.end();
     else while (Math.abs(end - from) < 0.3 * span && guard++ < 200) end = rand(lo + 0.08 * span, hi - 0.08 * span);
-    const points = [from, ...(from < lo + span / 2 ? [high(), low(), high()] : [low(), high(), low()]), end];
+    const lowFirst = from >= lo + span / 2;
+    const points = opts.shape === "back"
+      ? [from, ...(lowFirst ? [low(), high(), low()] : [high(), low(), high()]), from]
+      : [from, ...(lowFirst ? [low(), high(), low()] : [high(), low(), high()]), end];
+    const [minLeg, fullLeg] = opts.fast ? [320, 800] : [550, 1300];
     const legs = [];
     let total = 0;
     for (let i = 1; i < points.length; i += 1) {
-      const d = Math.max(550, 1300 * Math.abs(points[i] - points[i - 1]) / ((max - min) || 1)); // 速度按整条滑块算，窄范围来回也不会慢吞吞
+      const d = Math.max(minLeg, fullLeg * Math.abs(points[i] - points[i - 1]) / ((max - min) || 1)); // 速度按整条滑块算，窄范围来回也不会慢吞吞
       legs.push({ a: points[i - 1], b: points[i], t0: total, d });
       total += d;
     }
